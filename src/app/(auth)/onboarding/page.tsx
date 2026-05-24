@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { User, Phone, Wallet, Globe, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { User, Phone, Wallet, Globe, ArrowRight, CheckCircle2, ChevronDown, Search } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { COUNTRIES } from '@/lib/countries'
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(1)
@@ -17,6 +18,8 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
+  const [isCountryOpen, setIsCountryOpen] = useState(false)
+  const [countrySearch, setCountrySearch] = useState('')
   const router = useRouter()
   const supabase = createClient()
 
@@ -122,6 +125,12 @@ export default function OnboardingPage() {
     }
   }
 
+  const filteredCountries = COUNTRIES.filter(c => 
+    c.name.toLowerCase().includes(countrySearch.toLowerCase())
+  )
+
+  const selectedCountryName = COUNTRIES.find(c => c.code === formData.country)?.name || ''
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
       <div className="max-w-xl w-full">
@@ -168,24 +177,62 @@ export default function OnboardingPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 relative">
                     <label className="text-sm font-medium">Country</label>
-                    <div className="relative">
+                    <div 
+                      className="relative cursor-pointer"
+                      onClick={() => setIsCountryOpen(!isCountryOpen)}
+                    >
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <select 
-                        name="country"
-                        value={formData.country}
-                        onChange={handleInputChange}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none appearance-none"
-                      >
-                        <option value="">Select Country</option>
-                        <option value="US">United States</option>
-                        <option value="GB">United Kingdom</option>
-                        <option value="ES">Spain</option>
-                        <option value="MX">Mexico</option>
-                        {/* More countries */}
-                      </select>
+                      <div className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus-within:ring-2 focus-within:ring-emerald-500 flex items-center justify-between">
+                        <span className={formData.country ? "text-slate-900 dark:text-white" : "text-slate-500"}>
+                          {formData.country ? selectedCountryName : "Select Country"}
+                        </span>
+                        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${isCountryOpen ? 'rotate-180' : ''}`} />
+                      </div>
                     </div>
+
+                    <AnimatePresence>
+                      {isCountryOpen && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden"
+                        >
+                          <div className="p-2 border-b border-slate-100 dark:border-slate-700 relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                              type="text"
+                              placeholder="Search country..."
+                              value={countrySearch}
+                              onChange={(e) => setCountrySearch(e.target.value)}
+                              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                          <div className="max-h-60 overflow-y-auto">
+                            {filteredCountries.length > 0 ? (
+                              filteredCountries.map(country => (
+                                <div 
+                                  key={country.code}
+                                  onClick={() => {
+                                    setFormData({ ...formData, country: country.code })
+                                    setIsCountryOpen(false)
+                                    setCountrySearch('')
+                                  }}
+                                  className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center justify-between ${formData.country === country.code ? 'text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50/50 dark:bg-emerald-900/20' : 'text-slate-700 dark:text-slate-300'}`}
+                                >
+                                  {country.name}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-4 py-3 text-sm text-slate-500 text-center">No countries found</div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
 
