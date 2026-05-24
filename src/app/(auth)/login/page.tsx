@@ -34,10 +34,15 @@ export default function LoginPage() {
   }
 
   const handleGoogleLogin = async () => {
+    let origin = window.location.origin;
+    if (origin.includes('0.0.0.0')) {
+      origin = origin.replace('0.0.0.0', 'localhost').replace('https://', 'http://');
+    }
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${origin}/auth/callback`,
       },
     })
   }
