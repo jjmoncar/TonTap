@@ -284,21 +284,7 @@ export default function DashboardOverview() {
             </Link>
           </div>
 
-          {/* Referral Banner */}
-          <div className="bg-emerald-500 rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700"></div>
-            <h4 className="text-white font-bold text-lg leading-tight mb-2">Invite Friends & <br/> Earn 10% More</h4>
-            <p className="text-emerald-100 text-xs mb-4">Share your referral link and grow together.</p>
-            <button 
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.origin + '/register?ref=' + (profile?.id || ''))
-                alert('Referral link copied!')
-              }}
-              className="px-4 py-2 bg-white text-emerald-600 text-xs font-bold rounded-lg shadow-lg shadow-emerald-700/20 hover:-translate-y-0.5 transition-all"
-            >
-              Copy Link
-            </button>
-          </div>
+
         </div>
       </div>
     </div>
