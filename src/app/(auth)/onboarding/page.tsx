@@ -1,0 +1,297 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { User, Phone, Wallet, Globe, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+
+export default function OnboardingPage() {
+  const [step, setStep] = useState(1)
+  const [formData, setFormData] = useState({
+    full_name: '',
+    phone: '',
+    ton_wallet: '',
+    country: '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const router = useRouter()
+  const supabase = createClient()
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      
+      setUser(user)
+
+      // Fetch existing data to see where to start
+      const { data: profile, error: queryError } = await supabase
+        .from('users')
+        .select('full_name,country,ton_wallet,phone')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (queryError) {
+        // Handle error if needed
+      }
+
+      if (profile) {
+        setFormData({
+          full_name: profile.full_name || '',
+          phone: profile.phone || '',
+          ton_wallet: profile.ton_wallet || '',
+          country: profile.country || '',
+        })
+
+        // Logic to determine which step to show - EXTREMELY EXPLICIT
+        const isStep1Complete = profile.full_name?.trim().length > 0 && profile.country?.trim().length > 0;
+        const isStep2Complete = profile.ton_wallet?.trim().length > 0 && profile.phone?.trim().length > 0;
+
+        if (isStep1Complete && isStep2Complete) {
+          router.push('/dashboard')
+        } else if (isStep1Complete) {
+          setStep(2)
+        } else {
+          setStep(1)
+        }
+      }
+    }
+    checkUser()
+  }, [router, supabase])
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value })
+  }
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // 1. Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No authenticated user found')
+
+      // 2. Upsert existing profile instead of just updating
+      const { error: upsertError } = await supabase
+        .from('users')
+        .upsert({
+          id: user.id,
+          full_name: formData.full_name,
+          phone: formData.phone,
+          ton_wallet: formData.ton_wallet,
+          country: formData.country,
+        })
+
+      if (upsertError) throw upsertError
+
+      setStep(3) // Success step
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 2000)
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while saving your profile.')
+      setLoading(false)
+    }
+  }
+
+  const nextStep = async () => {
+    if (step === 1 && formData.full_name && formData.country) {
+      setLoading(true)
+      // Save Step 1 data to DB with upsert (create if not exists)
+      const { error } = await supabase
+        .from('users')
+        .upsert({
+          id: user.id,
+          full_name: formData.full_name.trim(),
+          country: formData.country.trim()
+        })
+      
+      setLoading(false)
+      if (!error) {
+        setStep(2)
+      } else {
+        setError('Error saving step 1. Please try again.')
+      }
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+      <div className="max-w-xl w-full">
+        {/* Progress Bar */}
+        <div className="mb-8 flex items-center justify-center gap-4">
+          {[1, 2, 3].map((s) => (
+            <div 
+              key={s}
+              className={`h-2 w-16 rounded-full transition-all duration-500 ${
+                step >= s ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-800'
+              }`}
+            />
+          ))}
+        </div>
+
+        <div className="premium-card overflow-hidden">
+          <AnimatePresence mode="wait">
+            {step === 1 && (
+              <motion.div 
+                key="step1"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="space-y-2 text-center">
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Tell us about yourself</h2>
+                  <p className="text-slate-500 text-sm">We need some basic info to get you started.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Full Name</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input 
+                        type="text"
+                        name="full_name"
+                        value={formData.full_name}
+                        onChange={handleInputChange}
+                        placeholder="John Doe"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Country</label>
+                    <div className="relative">
+                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <select 
+                        name="country"
+                        value={formData.country}
+                        onChange={handleInputChange}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none appearance-none"
+                      >
+                        <option value="">Select Country</option>
+                        <option value="US">United States</option>
+                        <option value="GB">United Kingdom</option>
+                        <option value="ES">Spain</option>
+                        <option value="MX">Mexico</option>
+                        {/* More countries */}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    nextStep();
+                  }}
+                  disabled={!formData.full_name || !formData.country || loading}
+                  className="w-full py-3 px-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {loading ? 'Saving...' : 'Continue'}
+                  {!loading && <ArrowRight className="w-5 h-5" />}
+                </button>
+              </motion.div>
+            )}
+
+            {step === 2 && (
+              <motion.div 
+                key="step2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="space-y-2 text-center">
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Verification & Wallet</h2>
+                  <p className="text-slate-500 text-sm">Where should we send your Toncoin?</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Phone Number</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input 
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        placeholder="+1 234 567 890"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">TON Wallet Address</label>
+                    <div className="relative">
+                      <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input 
+                        type="text"
+                        name="ton_wallet"
+                        value={formData.ton_wallet}
+                        onChange={handleInputChange}
+                        placeholder="UQ... or EQ..."
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400">Make sure this address is correct. You can't change it easily later.</p>
+                  </div>
+                </div>
+
+                {error && (
+                  <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>
+                )}
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setStep(1)}
+                    className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold rounded-xl hover:bg-slate-200 transition-all"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    onClick={handleSubmit}
+                    disabled={loading || !formData.phone || !formData.ton_wallet}
+                    className="flex-[2] py-3 px-4 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    {loading ? 'Saving...' : 'Finish Setup'}
+                    {!loading && <CheckCircle2 className="w-5 h-5" />}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {step === 3 && (
+              <motion.div 
+                key="step3"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center py-12 space-y-6"
+              >
+                <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-3xl font-bold text-slate-900 dark:text-white">You're all set!</h2>
+                  <p className="text-slate-500">Redirecting you to your dashboard...</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  )
+}
