@@ -234,7 +234,12 @@ export default function DashboardOverview() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {recommendedTasks.length > 0 ? recommendedTasks.map((task, idx) => (
-              <Link key={task.id} href={`/dashboard/tasks/${task.id}`} className="premium-card flex flex-col gap-4 group cursor-pointer hover:border-emerald-500/50 dark:hover:border-emerald-500/50">
+              <Link 
+                key={task.id} 
+                href={`/dashboard/tasks?start=${task.id}`} 
+                onClick={() => window.open(task.url, '_blank')}
+                className="premium-card flex flex-col gap-4 group cursor-pointer hover:border-emerald-500/50 dark:hover:border-emerald-500/50"
+              >
                 <div className="flex justify-between items-start">
                   <div className={`w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform`}>
                     <Clock className="w-6 h-6" />

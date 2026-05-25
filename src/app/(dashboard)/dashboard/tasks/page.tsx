@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, use } from 'react'
 import { 
   ListTodo, 
   LayoutGrid, 
@@ -17,7 +17,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import ReCAPTCHA from 'react-google-recaptcha'
 import { createClient } from '@/lib/supabase/client'
 
-export default function TasksPage() {
+export default function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ start?: string }>
+}) {
+  const resolvedSearchParams = use(searchParams)
+  const startTaskId = resolvedSearchParams.start
+
   const [view, setView] = useState<'board' | 'list'>('board')
   const [activeTask, setActiveTask] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
@@ -29,52 +36,7 @@ export default function TasksPage() {
 
   const supabase = createClient()
 
-  useEffect(() => {
-    fetchTasks()
-  }, [])
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout
-    if (activeTask && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1)
-      }, 1000)
-    } else if (timeLeft === 0 && activeTask) {
-      // Timer finished
-    }
-    return () => clearInterval(timer)
-  }, [activeTask, timeLeft])
-
-  const fetchTasks = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    // Get all active tasks
-    const { data: allTasks } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('is_active', true)
-
-    // Get user's completed sessions for today
-    const today = new Date().toISOString().split('T')[0]
-    const { data: completedSessions } = await supabase
-      .from('task_sessions')
-      .select('task_id')
-      .eq('user_id', user?.id)
-      .eq('status', 'COMPLETED')
-      .gte('completed_at', today)
-
-    const completedIds = completedSessions?.map(s => s.task_id) || []
-
-    const processedTasks = allTasks?.map(t => ({
-      ...t,
-      status: completedIds.includes(t.id) ? 'COMPLETED' : 'IN_PROGRESS'
-    })) || []
-
-    setTasks(processedTasks)
-    setLoading(false)
-  }
-
-  const handleStartTask = async (task: any) => {
+  const handleStartTask = async (task: any, openWindow = true) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
@@ -105,8 +67,69 @@ export default function TasksPage() {
     setTimeLeft(task.exposure_seconds || 30)
     
     // 2. Open ad URL
-    window.open(task.url, '_blank')
+    if (openWindow) {
+      window.open(task.url, '_blank')
+    }
   }
+
+  const fetchTasks = async (startId?: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // Get all active tasks
+    const { data: allTasks } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('is_active', true)
+
+    // Get user's completed sessions for today
+    const today = new Date().toISOString().split('T')[0]
+    const { data: completedSessions } = await supabase
+      .from('task_sessions')
+      .select('task_id')
+      .eq('user_id', user?.id)
+      .eq('status', 'COMPLETED')
+      .gte('completed_at', today)
+
+    const completedIds = completedSessions?.map(s => s.task_id) || []
+
+    const processedTasks = allTasks?.map(t => ({
+      ...t,
+      status: completedIds.includes(t.id) ? 'COMPLETED' : 'IN_PROGRESS'
+    })) || []
+
+    setTasks(processedTasks)
+    setLoading(false)
+
+    // Si se pasa un ID para autoiniciar y la tarea no está completada
+    if (startId) {
+      const taskToStart = processedTasks.find(t => t.id === startId)
+      if (taskToStart) {
+        if (taskToStart.status === 'COMPLETED') {
+          alert('Task already completed today')
+        } else {
+          // Limpiamos el parámetro de la URL
+          window.history.replaceState({}, '', '/dashboard/tasks')
+          handleStartTask(taskToStart, false)
+        }
+      }
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks(startTaskId)
+  }, [startTaskId])
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (activeTask && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => prev - 1)
+      }, 1000)
+    } else if (timeLeft === 0 && activeTask) {
+      // Timer finished
+    }
+    return () => clearInterval(timer)
+  }, [activeTask, timeLeft])
 
   const handleVerify = async () => {
     if (!captchaToken) {
