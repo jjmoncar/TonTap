@@ -4,19 +4,45 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Mail, Lock, ArrowRight, UserPlus } from 'lucide-react'
+import { Mail, Lock, ArrowRight, UserPlus, Check, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
+  // Real-time validation checks
+  const hasMinLength = password.length >= 8
+  const hasUppercase = /[A-Z]/.test(password)
+  const hasSpecial = /[^a-zA-Z0-9]/.test(password)
+  const passwordsMatch = password && password === confirmPassword
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Enforce validations upon submission
+    if (!hasMinLength) {
+      setError('Password must be at least 8 characters long.')
+      return
+    }
+    if (!hasUppercase) {
+      setError('Password must contain at least one uppercase letter.')
+      return
+    }
+    if (!hasSpecial) {
+      setError('Password must contain at least one special character.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -111,7 +137,67 @@ export default function RegisterPage() {
                   required
                 />
               </div>
-              <p className="text-[10px] text-slate-400">Must be at least 8 characters long.</p>
+              
+              {/* Real-time validation indicators */}
+              <div className="pt-1.5 space-y-1 bg-slate-50/50 dark:bg-slate-800/30 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80">
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {hasMinLength ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 ml-1 mr-1" />
+                  )}
+                  <span className={hasMinLength ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400 dark:text-slate-500"}>
+                    Min. 8 characters
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {hasUppercase ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 ml-1 mr-1" />
+                  )}
+                  <span className={hasUppercase ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400 dark:text-slate-500"}>
+                    Min. 1 uppercase letter
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {hasSpecial ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 ml-1 mr-1" />
+                  )}
+                  <span className={hasSpecial ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400 dark:text-slate-500"}>
+                    1 special character
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Confirm Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input 
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-none"
+                  required
+                />
+              </div>
+              {confirmPassword && (
+                <div className="flex items-center gap-1.5 text-[10px] pl-1">
+                  {passwordsMatch ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <X className="w-3.5 h-3.5 text-red-500" />
+                  )}
+                  <span className={passwordsMatch ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-red-500 dark:text-red-400"}>
+                    {passwordsMatch ? 'Passwords match' : 'Passwords do not match'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {error && (
