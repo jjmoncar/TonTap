@@ -50,16 +50,25 @@ export default function SettingsPage() {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      await supabase
-        .from('users')
-        .update({
-          full_name: formData.full_name,
-          ton_wallet: formData.ton_wallet
+      try {
+        const response = await fetch('/api/user/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: user.id,
+            full_name: formData.full_name,
+            ton_wallet: formData.ton_wallet
+          })
         })
-        .eq('id', user.id)
-      
-      setProfile({ ...profile, ...formData })
-      setIsEditing(false)
+        const result = await response.json()
+        if (!result.success) throw new Error(result.error)
+
+        setProfile({ ...profile, ...formData })
+        setIsEditing(false)
+      } catch (error) {
+        console.error('Error saving profile:', error)
+        alert('Failed to save profile changes')
+      }
     }
     setSaving(false)
   }

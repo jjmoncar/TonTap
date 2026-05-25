@@ -36,16 +36,13 @@ export default function AdminWithdrawals() {
 
     setProcessing(id)
     try {
-      const { error } = await supabase
-        .from('withdrawal_requests')
-        .update({ 
-          status: 'COMPLETED', 
-          tx_hash: txHash,
-          processed_at: new Date().toISOString()
-        })
-        .eq('id', id)
-
-      if (error) throw error
+      const response = await fetch('/api/admin/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'APPROVE', id, txHash })
+      })
+      const result = await response.json()
+      if (!result.success) throw new Error(result.error)
       
       setTxHash('')
       setSelectedId(null)
@@ -62,49 +59,13 @@ export default function AdminWithdrawals() {
     
     setProcessing(id)
     try {
-      // 1. Get request details
-      const { data: request, error: requestError } = await supabase
-        .from('withdrawal_requests')
-        .select('*')
-        .eq('id', id)
-        .single()
-
-      if (requestError) throw requestError;
-      if (!request) throw new Error('Request not found');
-
-      // 2. Return points to user
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('total_points')
-        .eq('id', request.user_id)
-        .single()
-      
-      if (userError) throw userError;
-      if (!user) throw new Error('User not found');
-
-      const newPoints = user.total_points + request.points_amount;
-      await supabase
-        .from('users')
-        .update({ total_points: newPoints })
-        .eq('id', request.user_id)
-
-      // 3. Mark request as rejected
-      await supabase
-        .from('withdrawal_requests')
-        .update({ status: 'REJECTED' })
-        .eq('id', id)
-
-      // 4. Create refund transaction record
-      await supabase
-        .from('point_transactions')
-        .insert({
-          user_id: request.user_id,
-          amount: request.points_amount,
-          type: 'REFUND',
-          balance_after: newPoints,
-          reference_id: id,
-          description: `Refund for rejected withdrawal #${id.slice(0, 8)}`
-        })
+      const response = await fetch('/api/admin/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'REJECT', id })
+      })
+      const result = await response.json()
+      if (!result.success) throw new Error(result.error)
 
       fetchRequests()
     } catch (err: any) {

@@ -67,10 +67,23 @@ export default function AdminTasksPage() {
       points_reward: points
     }
 
-    if (editingId) {
-      await supabase.from('tasks').update(payload).eq('id', editingId)
-    } else {
-      await supabase.from('tasks').insert([{ ...payload, is_active: true }])
+    try {
+      if (editingId) {
+        await fetch('/api/admin/tasks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingId, ...payload })
+        })
+      } else {
+        await fetch('/api/admin/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+      }
+    } catch (error) {
+      console.error('Error saving task:', error)
+      alert('Error saving task')
     }
 
     setIsModalOpen(false)
@@ -79,17 +92,26 @@ export default function AdminTasksPage() {
   }
 
   const toggleStatus = async (task: any) => {
-    await supabase
-      .from('tasks')
-      .update({ is_active: !task.is_active })
-      .eq('id', task.id)
-    fetchTasks()
+    try {
+      await fetch('/api/admin/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, is_active: !task.is_active })
+      })
+      fetchTasks()
+    } catch (error) {
+      console.error('Error toggling status:', error)
+    }
   }
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this task? This cannot be undone.')) {
-      await supabase.from('tasks').delete().eq('id', id)
-      fetchTasks()
+      try {
+        await fetch(`/api/admin/tasks?id=${id}`, { method: 'DELETE' })
+        fetchTasks()
+      } catch (error) {
+        console.error('Error deleting task:', error)
+      }
     }
   }
 

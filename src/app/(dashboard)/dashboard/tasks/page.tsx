@@ -78,41 +78,29 @@ export default function TasksPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // 1. Check if a session already exists for today to prevent unique constraint errors
-    const today = new Date().toISOString().split('T')[0]
-    let { data: existingSession } = await supabase
-      .from('task_sessions')
-      .select('id, status')
-      .eq('user_id', user.id)
-      .eq('task_id', task.id)
-      .eq('session_date', today)
-      .single()
-
-    let sessionId = existingSession?.id
-
-    if (!existingSession) {
-      // Create new session if none exists
-      const { data: newSession, error: insertError } = await supabase
-        .from('task_sessions')
-        .insert({
-          user_id: user.id,
-          task_id: task.id,
-          status: 'IN_PROGRESS'
+    // 1. Start session via secure API route
+    try {
+      const response = await fetch('/api/tasks/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: task.id,
+          userId: user.id
         })
-        .select()
-        .single()
+      })
 
-      if (insertError) {
-        console.error('Error starting task:', insertError)
+      const result = await response.json()
+      if (!result.success) {
+        alert(result.error || 'Failed to start task')
         return
       }
-      sessionId = newSession.id
-    } else if (existingSession.status === 'COMPLETED') {
-      alert('You have already completed this task today.')
+      
+      setCurrentSessionId(result.sessionId)
+    } catch (error) {
+      console.error('Error starting task:', error)
+      alert('Network error while starting task')
       return
     }
-
-    setCurrentSessionId(sessionId)
     setActiveTask(task)
     setTimeLeft(task.exposure_seconds || 30)
     
