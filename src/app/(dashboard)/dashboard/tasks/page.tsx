@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, use } from 'react'
+import React, { useState, useEffect, use, useRef } from 'react'
 import { 
   ListTodo, 
   LayoutGrid, 
@@ -33,6 +33,9 @@ export default function TasksPage({
   const [verifying, setVerifying] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+
+  const adWindowRef = useRef<Window | null>(null)
+  const originalTitleRef = useRef<string>('')
 
   const supabase = createClient()
 
@@ -68,7 +71,7 @@ export default function TasksPage({
     
     // 2. Open ad URL
     if (openWindow) {
-      window.open(task.url, '_blank')
+      adWindowRef.current = window.open(task.url, '_blank')
     }
   }
 
@@ -120,16 +123,71 @@ export default function TasksPage({
   }, [startTaskId])
 
   useEffect(() => {
+    let checkWindowInterval: NodeJS.Timeout
+
+    if (activeTask && timeLeft > 0) {
+      // 1. Monitoreo de cierre de ventana
+      checkWindowInterval = setInterval(() => {
+        if (adWindowRef.current && adWindowRef.current.closed) {
+          clearInterval(checkWindowInterval)
+          setActiveTask(null)
+          setCaptchaToken(null)
+          alert('Cerraste la ventana de la tarea antes de tiempo. Se ha cancelado la tarea y perdiste los puntos.')
+        }
+      }, 1000)
+
+      // 2. Monitoreo de regreso a la pestaña original
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && timeLeft > 0) {
+          if (adWindowRef.current && adWindowRef.current.closed) {
+            clearInterval(checkWindowInterval)
+            setActiveTask(null)
+            setCaptchaToken(null)
+            alert('Cerraste la ventana de la tarea antes de tiempo. Se ha cancelado la tarea y perdiste los puntos.')
+          } else {
+            const confirmStay = window.confirm('¡Cuidado! Aún faltan segundos para terminar la tarea.\n\nSi te quedas aquí perderás los puntos.\n\nPresiona "Cancelar" para abortar la tarea, o "Aceptar" para intentar volver a la tarea.')
+            if (!confirmStay) {
+              setActiveTask(null)
+              setCaptchaToken(null)
+            } else {
+              if (adWindowRef.current) {
+                adWindowRef.current.focus()
+              }
+            }
+          }
+        }
+      }
+
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+
+      return () => {
+        clearInterval(checkWindowInterval)
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
+    }
+  }, [activeTask, timeLeft])
+
+  useEffect(() => {
     let timer: NodeJS.Timeout
     if (activeTask && timeLeft > 0) {
+      if (!originalTitleRef.current) {
+        originalTitleRef.current = document.title || 'TonTap'
+      }
       timer = setInterval(() => {
         setTimeLeft((prev) => prev - 1)
       }, 1000)
     } else if (timeLeft === 0 && activeTask) {
       // Timer finished
+      document.title = '(1) ¡Tarea Lista! - Vuelve aquí'
     }
     return () => clearInterval(timer)
   }, [activeTask, timeLeft])
+
+  useEffect(() => {
+    if (!activeTask && originalTitleRef.current) {
+      document.title = originalTitleRef.current
+    }
+  }, [activeTask])
 
   const handleVerify = async () => {
     if (!captchaToken) {
