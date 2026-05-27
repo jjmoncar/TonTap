@@ -12,7 +12,7 @@ export function middleware(request: NextRequest) {
   // Eliminamos 'unsafe-inline' de script-src y usamos el nonce + 'strict-dynamic'.
   const cspHeader = `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval';
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic';
     style-src 'self' 'unsafe-inline';
     img-src 'self' blob: data:;
     font-src 'self';
