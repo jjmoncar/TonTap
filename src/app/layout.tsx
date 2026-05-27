@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   title: "TonTap - Earn TON by completing tasks",
   description: "The best platform to earn TON points and withdraw to your wallet.",
   other: {
-    monetag: "66b740f1e4ec3e78a0f40bb4ce45a2fc"
+    monetag: "415958c81be1c4268e65b355cb3667df"
   }
 };
 
