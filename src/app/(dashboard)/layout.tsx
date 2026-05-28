@@ -163,11 +163,11 @@ export default function DashboardLayout({
                 <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.full_name || 'User'}</p>
                 <p className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">{profile?.total_points || 0} Points</p>
               </div>
-              <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700">
+              <Link href="/dashboard/settings" className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
                 <div className="w-6 h-6 bg-emerald-500/10 rounded-md flex items-center justify-center">
                   <User className="w-4 h-4 text-emerald-500" />
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
         </header>
