@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 // Initialize Supabase admin client
 const getSupabaseAdmin = () => {
@@ -8,13 +9,32 @@ const getSupabaseAdmin = () => {
   if (!supabaseUrl || !supabaseServiceKey) {
     throw new Error('Server configuration error')
   }
-  return createClient(supabaseUrl, supabaseServiceKey)
+  return createAdminClient(supabaseUrl, supabaseServiceKey)
 }
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json()
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
     const supabaseAdmin = getSupabaseAdmin()
+
+    // Verify requester is admin
+    const { data: requesterProfile } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (requesterProfile?.role !== 'ADMIN') {
+      return NextResponse.json({ success: false, error: 'Forbidden. Admin access required.' }, { status: 403 })
+    }
+
+    const payload = await request.json()
 
     const { data, error } = await supabaseAdmin
       .from('tasks')
@@ -32,8 +52,27 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const payload = await request.json()
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
     const supabaseAdmin = getSupabaseAdmin()
+
+    // Verify requester is admin
+    const { data: requesterProfile } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (requesterProfile?.role !== 'ADMIN') {
+      return NextResponse.json({ success: false, error: 'Forbidden. Admin access required.' }, { status: 403 })
+    }
+
+    const payload = await request.json()
     
     if (!payload.id) {
       return NextResponse.json({ success: false, error: 'Missing task ID' }, { status: 400 })
@@ -58,14 +97,32 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const supabaseAdmin = getSupabaseAdmin()
+
+    // Verify requester is admin
+    const { data: requesterProfile } = await supabaseAdmin
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (requesterProfile?.role !== 'ADMIN') {
+      return NextResponse.json({ success: false, error: 'Forbidden. Admin access required.' }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing task ID' }, { status: 400 })
     }
-
-    const supabaseAdmin = getSupabaseAdmin()
 
     const { error } = await supabaseAdmin
       .from('tasks')

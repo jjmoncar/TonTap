@@ -111,12 +111,63 @@ CREATE TABLE public.ip_registry (
   PRIMARY KEY (ip_address, user_id)
 );
 
--- RLS POLICIES (Example)
+-- RLS POLICIES
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
 
 ALTER TABLE public.task_sessions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own sessions" ON public.task_sessions FOR SELECT USING (auth.uid() = user_id);
 
--- (More policies should be added for other tables)
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view tasks" ON public.tasks FOR SELECT USING (true);
+
+ALTER TABLE public.point_transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their own point transactions" ON public.point_transactions FOR SELECT USING (auth.uid() = user_id);
+
+ALTER TABLE public.withdrawal_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their own withdrawal requests" ON public.withdrawal_requests FOR SELECT USING (auth.uid() = user_id);
+
+ALTER TABLE public.system_config ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view system configurations" ON public.system_config FOR SELECT USING (true);
+
+ALTER TABLE public.fraud_flags ENABLE ROW LEVEL SECURITY;
+-- Restricted to Admin only (access via service role key)
+
+ALTER TABLE public.ip_registry ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view their own IP registry" ON public.ip_registry FOR SELECT USING (auth.uid() = user_id);
+
+-- Trigger to restrict client-side modification of sensitive fields in public.users
+CREATE OR REPLACE FUNCTION public.check_user_columns_restrictions()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Restrict client-side updates/inserts (auth.uid() is not null)
+  IF auth.uid() IS NOT NULL THEN
+    IF TG_OP = 'INSERT' THEN
+      -- Enforce default values for sensitive fields on client-side insert
+      NEW.role := 'USER';
+      NEW.total_points := 0;
+      NEW.is_flagged := FALSE;
+      NEW.status := 'ACTIVE';
+    ELSIF TG_OP = 'UPDATE' THEN
+      -- Block updating sensitive fields on client-side update
+      IF NEW.role IS DISTINCT FROM OLD.role OR
+         NEW.total_points IS DISTINCT FROM OLD.total_points OR
+         NEW.status IS DISTINCT FROM OLD.status OR
+         NEW.is_flagged IS DISTINCT FROM OLD.is_flagged OR
+         NEW.registration_ip IS DISTINCT FROM OLD.registration_ip OR
+         NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+        RAISE EXCEPTION 'You are not allowed to modify restricted fields (role, points, status, etc.)';
+      END IF;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER tr_check_user_columns_restrictions
+BEFORE INSERT OR UPDATE ON public.users
+FOR EACH ROW
+EXECUTE FUNCTION public.check_user_columns_restrictions();
+

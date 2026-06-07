@@ -1,8 +1,16 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { taskId, sessionId, captchaToken } = await request.json()
 
     if (!taskId || !sessionId || !captchaToken) {
@@ -37,7 +45,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+    const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceKey)
 
     // Verify session
     const { data: session, error: sessionError } = await supabaseAdmin
@@ -45,6 +53,7 @@ export async function POST(request: Request) {
       .select('*, tasks(exposure_seconds, points_reward)')
       .eq('id', sessionId)
       .eq('task_id', taskId)
+      .eq('user_id', user.id)
       .single()
 
     if (sessionError || !session) {

@@ -1,13 +1,23 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
-    const { taskId, userId } = await request.json()
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!taskId || !userId) {
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { taskId } = await request.json()
+
+    if (!taskId) {
       return NextResponse.json({ success: false, error: 'Missing required parameters' }, { status: 400 })
     }
+
+    const userId = user.id
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -16,7 +26,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+    const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceKey)
 
     // Verify task exists and is active
     const { data: task, error: taskError } = await supabaseAdmin

@@ -71,7 +71,7 @@ export async function POST(request: Request) {
         .insert({
           user_id: userId,
           amount: Number(amount),
-          type: Number(amount) > 0 ? 'EARNING' : 'DEDUCTION',
+          type: Number(amount) > 0 ? 'BONUS' : 'PENALTY',
           balance_after: newBalance,
           description: description || `Admin adjustment by ${user.id.slice(0,8)}`
         })

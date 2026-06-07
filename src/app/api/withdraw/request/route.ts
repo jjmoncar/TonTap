@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         amount: -amountPoints,
-        type: 'WITHDRAWAL',
+        type: 'WITHDRAW',
         balance_after: newPoints,
         reference_id: withdrawal.id,
         description: `Withdrawal request #${withdrawal.id.slice(0, 8)}`
