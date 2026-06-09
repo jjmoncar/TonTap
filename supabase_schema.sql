@@ -91,7 +91,10 @@ INSERT INTO public.system_config (key, value, description) VALUES
   ('daily_task_limit',       '15',        'Máximo de tareas por día por usuario'),
   ('maintenance_mode',       'false',     'Modo mantenimiento activo'),
   ('recaptcha_enabled',      'true',      'reCAPTCHA obligatorio'),
-  ('global_banner_message',  '',          'Mensaje de aviso global (vacío = oculto)');
+  ('global_banner_message',  '',          'Mensaje de aviso global (vacío = oculto)'),
+  ('fraud_alerts_enabled',                  'true',      'Activar/desactivar alertas de fraude y monitoreo'),
+  ('max_shared_ips',                         '2',         'Cuentas máximas permitidas compartiendo IP antes de flaggear'),
+  ('bot_detection_consecutive_threshold',    '5',         'Límite de tareas consecutivas resueltas en el mínimo tiempo antes de flaggear');
 
 -- 7. Fraud Flags table
 CREATE TABLE public.fraud_flags (
@@ -187,6 +190,11 @@ DECLARE
   v_new_total_points INTEGER;
   v_elapsed_seconds INTEGER;
   v_required_seconds INTEGER;
+  -- Bot detection variables
+  v_fraud_enabled TEXT;
+  v_bot_threshold TEXT;
+  v_consecutive_threshold INTEGER;
+  v_suspicious_count INTEGER;
 BEGIN
   -- 1. Get and lock the session to prevent race conditions / double completion
   SELECT * INTO v_session
@@ -264,10 +272,107 @@ BEGIN
     NOW()
   );
 
+  -- 8. Check for Bot/Script completion behavior:
+  -- If the user's last X completed sessions today all have elapsed times extremely close to the required exposure time (within 3 seconds)
+  -- we flag it as "SUSPICIOUS_BOT_BEHAVIOR".
+  SELECT value INTO v_fraud_enabled FROM public.system_config WHERE key = 'fraud_alerts_enabled';
+  IF COALESCE(v_fraud_enabled, 'true') = 'true' THEN
+    SELECT value INTO v_bot_threshold FROM public.system_config WHERE key = 'bot_detection_consecutive_threshold';
+    v_consecutive_threshold := COALESCE(v_bot_threshold::INTEGER, 5);
+
+    SELECT COUNT(*) INTO v_suspicious_count
+    FROM (
+      SELECT s.id
+      FROM public.task_sessions s
+      JOIN public.tasks t ON s.task_id = t.id
+      WHERE s.user_id = p_user_id 
+        AND s.status = 'COMPLETED' 
+        AND s.completed_at::date = CURRENT_DATE
+        AND EXTRACT(EPOCH FROM (s.completed_at - s.started_at)) BETWEEN (COALESCE(t.exposure_seconds, 30) - 2) AND (COALESCE(t.exposure_seconds, 30) + 3)
+      LIMIT v_consecutive_threshold
+    ) sub;
+
+    IF v_suspicious_count >= v_consecutive_threshold THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.fraud_flags
+        WHERE user_id = p_user_id AND reason = 'SUSPICIOUS_BOT_BEHAVIOR' AND resolved = FALSE
+      ) THEN
+        INSERT INTO public.fraud_flags (user_id, reason, details)
+        VALUES (
+          p_user_id,
+          'SUSPICIOUS_BOT_BEHAVIOR',
+          jsonb_build_object(
+            'message', 'User completed ' || v_consecutive_threshold::text || '+ tasks today with completion times within 3 seconds of the required minimum.',
+            'consecutive_fast_completions', v_suspicious_count
+          )
+        );
+      END IF;
+    END IF;
+  END IF;
+
   RETURN jsonb_build_object(
     'success', true,
     'newTotalPoints', v_new_total_points
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- 10. Auto-run Fraud Detection on Session Start
+CREATE OR REPLACE FUNCTION public.detect_fraud_on_session_start()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_fraud_enabled TEXT;
+  v_max_shared_ips TEXT;
+  v_other_user_ids UUID[];
+BEGIN
+  -- 1. Read configuration
+  SELECT value INTO v_fraud_enabled FROM public.system_config WHERE key = 'fraud_alerts_enabled';
+  IF COALESCE(v_fraud_enabled, 'true') <> 'true' THEN
+    RETURN NEW;
+  END IF;
+
+  -- 2. Populate ip_registry
+  IF NEW.ip_address IS NOT NULL AND NEW.ip_address <> 'unknown' AND NEW.ip_address <> '' THEN
+    INSERT INTO public.ip_registry (ip_address, user_id, seen_at)
+    VALUES (NEW.ip_address, NEW.user_id, NOW())
+    ON CONFLICT (ip_address, user_id) DO UPDATE SET seen_at = NOW();
+
+    -- 3. Check for Shared IP Multi-account behavior
+    SELECT value INTO v_max_shared_ips FROM public.system_config WHERE key = 'max_shared_ips';
+    
+    -- Fetch other users on this IP
+    SELECT ARRAY_AGG(DISTINCT user_id) INTO v_other_user_ids
+    FROM public.ip_registry
+    WHERE ip_address = NEW.ip_address AND user_id <> NEW.user_id;
+
+    IF CARDINALITY(v_other_user_ids) >= COALESCE(v_max_shared_ips::INTEGER, 2) THEN
+      -- Flag this user for multi-account sharing
+      IF NOT EXISTS (
+        SELECT 1 FROM public.fraud_flags
+        WHERE user_id = NEW.user_id AND reason = 'SHARED_IP' AND (details->>'ip_address') = NEW.ip_address AND resolved = FALSE
+      ) THEN
+        INSERT INTO public.fraud_flags (user_id, reason, details)
+        VALUES (
+          NEW.user_id,
+          'SHARED_IP',
+          jsonb_build_object(
+            'ip_address', NEW.ip_address,
+            'reason', 'Multiple accounts sharing the same IP address',
+            'shared_accounts_count', CARDINALITY(v_other_user_ids) + 1,
+            'other_user_ids', to_jsonb(v_other_user_ids)
+          )
+        );
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER tr_detect_fraud_on_session_start
+AFTER INSERT ON public.task_sessions
+FOR EACH ROW
+EXECUTE FUNCTION public.detect_fraud_on_session_start();
 
