@@ -45,13 +45,9 @@ export default function TasksPage({
 
     // 1. Start session via secure API route
     try {
-      const response = await fetch('/api/tasks/start', {
+      const response = await fetch(`/api/tasks/${task.id}/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: task.id,
-          userId: user.id
-        })
+        headers: { 'Content-Type': 'application/json' }
       })
 
       const result = await response.json()
@@ -197,11 +193,10 @@ export default function TasksPage({
 
     setVerifying(true)
     try {
-      const response = await fetch('/api/tasks/complete', {
+      const response = await fetch(`/api/tasks/${activeTask.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          taskId: activeTask.id,
           sessionId: currentSessionId,
           captchaToken
         })

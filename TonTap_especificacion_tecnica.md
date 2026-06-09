@@ -200,7 +200,7 @@ Cada tarea corresponde a un **Adsterra Direct Link** configurado por el administ
 Cuando el usuario envía la solicitud de completar la tarea, el API route verifica:
 
 ```typescript
-// Pseudocódigo del endpoint /api/tasks/complete
+// Pseudocódigo del endpoint /api/tasks/[id]/complete
 const session = await getTaskSession(userId, taskId);
 const elapsed = Date.now() - session.started_at;
 const REQUIRED_MS = task.exposure_seconds * 1000; // 30000ms

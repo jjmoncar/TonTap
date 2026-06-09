@@ -171,3 +171,103 @@ BEFORE INSERT OR UPDATE ON public.users
 FOR EACH ROW
 EXECUTE FUNCTION public.check_user_columns_restrictions();
 
+
+-- 9. Atomic Task Completion Function
+CREATE OR REPLACE FUNCTION public.complete_task_secure(
+  p_user_id UUID,
+  p_task_id UUID,
+  p_session_id UUID
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_session RECORD;
+  v_task RECORD;
+  v_user RECORD;
+  v_points_reward INTEGER;
+  v_new_total_points INTEGER;
+  v_elapsed_seconds INTEGER;
+  v_required_seconds INTEGER;
+BEGIN
+  -- 1. Get and lock the session to prevent race conditions / double completion
+  SELECT * INTO v_session
+  FROM public.task_sessions
+  WHERE id = p_session_id AND user_id = p_user_id AND task_id = p_task_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'Session not found');
+  END IF;
+
+  IF v_session.status = 'COMPLETED' THEN
+    RETURN jsonb_build_object('error', 'Task already completed');
+  END IF;
+
+  -- 2. Get task details
+  SELECT * INTO v_task
+  FROM public.tasks
+  WHERE id = p_task_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'Task not found');
+  END IF;
+
+  -- 3. Verify exposure time (with 2-second grace period)
+  v_elapsed_seconds := EXTRACT(EPOCH FROM (NOW() - v_session.started_at));
+  v_required_seconds := COALESCE(v_task.exposure_seconds, 30);
+
+  IF v_elapsed_seconds < (v_required_seconds - 2) THEN
+    RETURN jsonb_build_object('error', 'Exposure time not met');
+  END IF;
+
+  -- 4. Get and lock user profile
+  SELECT * INTO v_user
+  FROM public.users
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'User not found');
+  END IF;
+
+  v_points_reward := COALESCE(v_task.points_reward, 0);
+  v_new_total_points := v_user.total_points + v_points_reward;
+
+  -- 5. Update user's points (bypass client restrictions trigger since this runs as SECURITY DEFINER owner)
+  UPDATE public.users
+  SET total_points = v_new_total_points,
+      updated_at = NOW()
+  WHERE id = p_user_id;
+
+  -- 6. Mark session as completed
+  UPDATE public.task_sessions
+  SET status = 'COMPLETED',
+      completed_at = NOW(),
+      captcha_valid = TRUE
+  WHERE id = p_session_id;
+
+  -- 7. Create point transaction record
+  INSERT INTO public.point_transactions (
+    user_id,
+    type,
+    amount,
+    balance_after,
+    reference_id,
+    description,
+    created_at
+  ) VALUES (
+    p_user_id,
+    'EARN',
+    v_points_reward,
+    v_new_total_points,
+    p_session_id,
+    'Completed task: ' || p_task_id::text,
+    NOW()
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'newTotalPoints', v_new_total_points
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
