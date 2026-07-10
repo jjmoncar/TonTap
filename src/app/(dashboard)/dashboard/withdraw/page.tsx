@@ -41,8 +41,8 @@ export default function WithdrawPage() {
         .in('key', ['ton_per_point', 'min_withdrawal_points'])
         
       if (configs) {
-        const tr = configs.find(c => c.key === 'ton_per_point')?.value
-        const mw = configs.find(c => c.key === 'min_withdrawal_points')?.value
+        const tr = configs.find((c: any) => c.key === 'ton_per_point')?.value
+        const mw = configs.find((c: any) => c.key === 'min_withdrawal_points')?.value
         if (tr) setTonRate(Number(tr))
         if (mw) setMinWithdraw(Number(mw))
       }

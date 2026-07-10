@@ -2,23 +2,30 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth } from '@/lib/firebase/client'
+import { onAuthStateChanged } from 'firebase/auth'
 
 export default function Home() {
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        router.push('/dashboard')
-      } else {
-        router.push('/login')
+    console.log("Initializing auth listener with auth:", auth)
+    const unsubscribe = onAuthStateChanged(
+      auth, 
+      (user) => {
+        console.log("onAuthStateChanged fired! User is:", user)
+        if (user) {
+          window.location.replace('/dashboard')
+        } else {
+          window.location.replace('/login')
+        }
+      },
+      (error) => {
+        console.error("onAuthStateChanged error:", error)
       }
-    }
-    checkUser()
-  }, [router, supabase.auth])
+    )
+    return () => unsubscribe()
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">

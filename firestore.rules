@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Función auxiliar: Comprueba si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Función auxiliar: Comprueba si el documento pertenece al usuario autenticado
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Función auxiliar: Lee el rol del usuario desde la colección 'users'
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    // --- REGLAS POR COLECCIÓN ---
+
+    // 1. Colección de Usuarios
+    match /users/{userId} {
+      // Cualquier usuario autenticado puede leer perfiles (o restringir a su propio perfil)
+      allow read: if isAuthenticated();
+      
+      // Permitir creación inicial en onboarding (solo si totalPoints es 0 y el rol es USER)
+      allow create: if isOwner(userId) 
+        && request.resource.data.role == 'USER' 
+        && request.resource.data.totalPoints == 0
+        && request.resource.data.isFlagged == false;
+      
+      // El usuario solo puede actualizar sus datos de perfil no-sensibles (teléfono, wallet)
+      allow update: if isOwner(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'totalPoints', 'isFlagged', 'status', 'createdAt'])
+        || isAdmin();
+
+      // Borrado solo permitido por administradores
+      allow delete: if isAdmin();
+    }
+
+    // 2. Colección de Tareas
+    match /tasks/{taskId} {
+      // Cualquiera puede leer las tareas activas
+      allow read: if isAuthenticated();
+      // Solo administradores pueden crear, modificar o borrar tareas
+      allow write: if isAdmin();
+    }
+
+    // 3. Sesiones de Tareas (task_sessions)
+    match /task_sessions/{sessionId} {
+      // El usuario puede leer sus propias sesiones de tareas
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      // NINGUNA escritura directa del cliente. Todo se procesa mediante /api/tasks/[id]/start y /complete
+      allow write: if false; 
+    }
+
+    // 4. Transacciones de Puntos (point_transactions)
+    match /point_transactions/{txId} {
+      // El usuario puede leer su propio historial
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      // NINGUNA escritura directa del cliente (los puntos solo los asigna el servidor)
+      allow write: if false;
+    }
+
+    // 5. Peticiones de Retiros (withdrawal_requests)
+    match /withdrawal_requests/{requestId} {
+      // El usuario puede leer sus propios retiros
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      // NINGUNA escritura directa. Se solicita a través de /api/withdraw/request para validar balances
+      allow write: if false;
+    }
+
+    // 6. Configuración del Sistema (system_config)
+    match /system_config/{configId} {
+      // Permitir lectura a usuarios autenticados para mostrar avisos, banner o límites
+      allow read: if isAuthenticated();
+      // Solo administradores pueden modificar configuraciones globales
+      allow write: if isAdmin();
+    }
+
+    // 7. Registro de IPs y Flags de Fraude
+    match /ip_registry/{id} {
+      allow read: if isAdmin();
+      allow write: if false; // Solo escrito por Firebase Admin en /start
+    }
+
+    match /fraud_flags/{id} {
+      allow read: if isAdmin();
+      allow write: if false; // Solo escrito por Firebase Admin
+    }
+  }
+}

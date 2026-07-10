@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { auth, db } from '@/lib/firebase/client'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
 import { Wallet, ArrowUpRight, TrendingUp, Clock, CheckCircle2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -18,89 +20,109 @@ export default function DashboardOverview() {
   const [activities, setActivities] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
-  const supabase = createClient()
 
   useEffect(() => {
     setMounted(true)
-    const fetchData = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) return
 
-      // 1. Fetch User Profile
-      const { data: profileData } = await supabase
-        .from('users')
-        .select('total_points, full_name')
-        .eq('id', user.id)
-        .maybeSingle()
-      setProfile(profileData)
+      try {
+        // 1. Fetch User Profile
+        const userDoc = await getDoc(doc(db, 'users', user.uid))
+        const profileData = userDoc.exists() ? userDoc.data() : null
+        
+        setProfile(profileData ? {
+          total_points: profileData.totalPoints,
+          full_name: profileData.fullName
+        } : null)
 
-      // 2. Fetch System Config
-      const { data: configData } = await supabase
-        .from('system_config')
-        .select('key, value')
-      
-      const configMap: any = {}
-      configData?.forEach(item => configMap[item.key] = item.value)
-      
-      const taskLimit = parseInt(configMap['daily_task_limit'] || '15')
-      const tonPerPoint = parseFloat(configMap['ton_per_point'] || '0.00001')
+        // 2. Fetch System Config
+        const configSnap = await getDoc(doc(db, 'system_config', 'global'))
+        const configMap = configSnap.exists() ? configSnap.data()! : {}
+        
+        const taskLimit = parseInt(configMap['daily_task_limit'] || '15')
+        const tonPerPoint = parseFloat(configMap['ton_per_point'] || '0.00001')
 
-      // 3. Fetch Today's Tasks Count
-      const today = new Date().toISOString().split('T')[0]
-      const { count: todayTasks } = await supabase
-        .from('task_sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('status', 'COMPLETED')
-        .eq('session_date', today)
+        // 3. Fetch Today's Tasks Count
+        const today = new Date().toISOString().split('T')[0]
+        const tasksQuery = query(
+          collection(db, 'task_sessions'),
+          where('userId', '==', user.uid),
+          where('status', '==', 'COMPLETED'),
+          where('sessionDate', '==', today)
+        )
+        const tasksSnap = await getDocs(tasksQuery)
+        const todayTasks = tasksSnap.size
 
-      // 4. Fetch Total Earned Points (sum of EARN transactions)
-      const { data: transactions } = await supabase
-        .from('point_transactions')
-        .select('amount')
-        .eq('user_id', user.id)
-        .eq('type', 'EARN')
-      
-      const totalEarnedPoints = transactions?.reduce((acc, curr) => acc + curr.amount, 0) || 0
+        // 4. Fetch Total Earned Points (sum of EARN transactions)
+        const earnQuery = query(
+          collection(db, 'point_transactions'),
+          where('userId', '==', user.uid),
+          where('type', '==', 'EARN')
+        )
+        const earnSnap = await getDocs(earnQuery)
+        const totalEarnedPoints = earnSnap.docs.reduce((acc, doc) => acc + (doc.data().amount || 0), 0)
 
-      setStats({
-        todayTasks: todayTasks || 0,
-        taskLimit,
-        totalEarnedPoints,
-        tonPerPoint
-      })
+        setStats({
+          todayTasks,
+          taskLimit,
+          totalEarnedPoints,
+          tonPerPoint
+        })
 
-      // 5. Fetch Recommended Tasks
-      const { data: tasksData } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .limit(4)
-      setRecommendedTasks(tasksData || [])
+        // 5. Fetch Recommended Tasks
+        const recTasksQuery = query(
+          collection(db, 'tasks'),
+          where('isActive', '==', true),
+          orderBy('sortOrder', 'asc'),
+          limit(4)
+        )
+        const recTasksSnap = await getDocs(recTasksQuery)
+        const tasksData = recTasksSnap.docs.map(doc => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            title: data.title,
+            url: data.url,
+            exposure_seconds: data.exposureSeconds,
+            points_reward: data.pointsReward,
+            isActive: data.isActive
+          }
+        })
+        setRecommendedTasks(tasksData)
 
-      // 6. Fetch Recent Activities (combined transactions and withdrawals)
-      const { data: recentTransactions } = await supabase
-        .from('point_transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5)
-      
-      const formattedActivities = recentTransactions?.map(tx => ({
-        id: tx.id,
-        title: tx.description || (tx.type === 'EARN' ? 'Task Completed' : 'Transaction'),
-        amount: `${tx.amount > 0 ? '+' : ''}${tx.amount} pts`,
-        time: new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'success',
-        type: tx.type.toLowerCase()
-      })) || []
+        // 6. Fetch Recent Activities (combined transactions and withdrawals)
+        const txQuery = query(
+          collection(db, 'point_transactions'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        )
+        const txSnap = await getDocs(txQuery)
+        
+        const formattedActivities = txSnap.docs.map(doc => {
+          const tx = doc.data()
+          const createdAtDate = tx.createdAt?.toDate() || new Date()
+          return {
+            id: doc.id,
+            title: tx.description || (tx.type === 'EARN' ? 'Task Completed' : 'Transaction'),
+            amount: `${tx.amount > 0 ? '+' : ''}${tx.amount} pts`,
+            time: createdAtDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            status: 'success',
+            type: tx.type.toLowerCase()
+          }
+        })
 
-      setActivities(formattedActivities)
-      setLoading(false)
-    }
-    fetchData()
-  }, [supabase])
+        setActivities(formattedActivities)
+      } catch (err) {
+        console.error('Error fetching dashboard overview data:', err)
+      } finally {
+        setLoading(false)
+      }
+    })
+
+    return () => unsubscribe()
+  }, [])
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[400px]">

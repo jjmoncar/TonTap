@@ -52,7 +52,7 @@ export default function AdminDashboard() {
       .select('ton_amount')
       .eq('status', 'COMPLETED')
     
-    const tonPaid = withdrawals?.reduce((sum, req) => sum + (Number(req.ton_amount) || 0), 0) || 0
+    const tonPaid = withdrawals?.reduce((sum: number, req: any) => sum + (Number(req.ton_amount) || 0), 0) || 0
 
     // Pending Withdrawals Count
     const { count: pendingCount } = await supabase
@@ -108,11 +108,11 @@ export default function AdminDashboard() {
       d.setDate(now.getDate() - (days - 1 - i))
       const dateStr = d.toISOString().split('T')[0]
       
-      const dayWithdrawals = recentWithdrawals?.filter(w => w.requested_at.startsWith(dateStr)) || []
-      const payout = dayWithdrawals.reduce((sum, w) => sum + Number(w.ton_amount), 0)
+      const dayWithdrawals = recentWithdrawals?.filter((w: any) => w.requested_at.startsWith(dateStr)) || []
+      const payout = dayWithdrawals.reduce((sum: number, w: any) => sum + Number(w.ton_amount), 0)
       
-      const dayEarnings = recentEarnings?.filter(e => e.created_at.startsWith(dateStr)) || []
-      const earn = dayEarnings.reduce((sum, e) => sum + (Number(e.amount) * 0.00001), 0)
+      const dayEarnings = recentEarnings?.filter((e: any) => e.created_at.startsWith(dateStr)) || []
+      const earn = dayEarnings.reduce((sum: number, e: any) => sum + (Number(e.amount) * 0.00001), 0)
       
       return { 
         label: d.getDate().toString(),

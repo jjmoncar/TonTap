@@ -4,15 +4,17 @@ export function middleware(request: NextRequest) {
   // Generar un nonce dinámico codificado en Base64
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   
-  // Obtener el dominio de Supabase desde las variables de entorno
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const supabaseDomain = supabaseUrl ? new URL(supabaseUrl).origin : 'https://*.supabase.co'
+  // Obtener el proyecto de Firebase desde las variables de entorno
+  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || ''
+  const firebaseDomain = firebaseProjectId ? `https://${firebaseProjectId}.firebaseapp.com` : ''
+
+  const isDev = process.env.NODE_ENV === 'development'
 
   // Definir las directivas CSP.
-  // Eliminamos 'unsafe-inline' de script-src y usamos el nonce + 'strict-dynamic'.
+  // En desarrollo añadimos 'unsafe-eval' para habilitar Next.js Fast Refresh.
   const cspHeader = `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic';
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${isDev ? "'unsafe-eval'" : ""};
     style-src 'self' 'unsafe-inline';
     img-src 'self' blob: data:;
     font-src 'self';
@@ -21,7 +23,7 @@ export function middleware(request: NextRequest) {
     form-action 'self';
     frame-ancestors 'none';
     frame-src 'self' https://www.google.com/ https://recaptcha.google.com/;
-    connect-src 'self' ${supabaseDomain} https://*.supabase.co wss://*.supabase.co https://www.google.com/recaptcha/ https://www.gstatic.com/;
+    connect-src 'self' ${firebaseDomain} https://*.googleapis.com https://*.firebaseapp.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.google.com/recaptcha/ https://www.gstatic.com/;
     upgrade-insecure-requests;
   `.replace(/\s{2,}/g, ' ').trim()
 

@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth, db } from '@/lib/firebase/client'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
 import { 
   LayoutDashboard, 
   ListTodo, 
@@ -29,42 +31,47 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
-    const checkProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profileData, error: queryError } = await supabase
-          .from('users')
-          .select('full_name,total_points,ton_wallet,phone')
-          .eq('id', user.id)
-          .maybeSingle()
-
-
-        if (profileData) {
-          setProfile(profileData)
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const docRef = doc(db, 'users', currentUser.uid)
+          const docSnap = await getDoc(docRef)
           
-          const hasWallet = profileData.ton_wallet && profileData.ton_wallet.trim().length > 0;
-          const hasPhone = profileData.phone && profileData.phone.trim().length > 0;
+          if (docSnap.exists()) {
+            const profileData = docSnap.data()
+            // Mapear campos al formato esperado por el frontend
+            const mappedProfile = {
+              full_name: profileData.fullName,
+              total_points: profileData.totalPoints,
+              ton_wallet: profileData.tonWallet,
+              phone: profileData.phone,
+            }
+            setProfile(mappedProfile)
+            
+            const hasWallet = profileData.tonWallet && profileData.tonWallet.trim().length > 0;
+            const hasPhone = profileData.phone && profileData.phone.trim().length > 0;
 
-          if (!hasWallet || !hasPhone) {
+            if (!hasWallet || !hasPhone) {
+              router.push('/onboarding')
+            }
+          } else {
             router.push('/onboarding')
           }
-        } else {
-          router.push('/onboarding')
+        } catch (error) {
+          console.error('Error loading dashboard user profile:', error)
         }
       } else {
         router.push('/login')
       }
       setLoading(false)
-    }
-
-    checkProfile()
-  }, [supabase, router, pathname])
+    })
+    return () => unsubscribe()
+  }, [router, pathname])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await signOut(auth)
     router.push('/login')
   }
 

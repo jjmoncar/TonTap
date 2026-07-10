@@ -89,9 +89,9 @@ export default function TasksPage({
       .eq('status', 'COMPLETED')
       .gte('completed_at', today)
 
-    const completedIds = completedSessions?.map(s => s.task_id) || []
+    const completedIds = completedSessions?.map((s: any) => s.task_id) || []
 
-    const processedTasks = allTasks?.map(t => ({
+    const processedTasks = allTasks?.map((t: any) => ({
       ...t,
       status: completedIds.includes(t.id) ? 'COMPLETED' : 'IN_PROGRESS'
     })) || []
@@ -101,7 +101,7 @@ export default function TasksPage({
 
     // Si se pasa un ID para autoiniciar y la tarea no está completada
     if (startId) {
-      const taskToStart = processedTasks.find(t => t.id === startId)
+      const taskToStart = processedTasks.find((t: any) => t.id === startId)
       if (taskToStart) {
         if (taskToStart.status === 'COMPLETED') {
           alert('Task already completed today')

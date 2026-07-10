@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth, db } from '@/lib/firebase/client'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { User, Phone, Wallet, Globe, ArrowRight, CheckCircle2, ChevronDown, Search } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COUNTRIES } from '@/lib/countries'
@@ -21,52 +23,48 @@ export default function OnboardingPage() {
   const [isCountryOpen, setIsCountryOpen] = useState(false)
   const [countrySearch, setCountrySearch] = useState('')
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
         router.push('/login')
         return
       }
       
-      setUser(user)
+      setUser(currentUser)
 
       // Fetch existing data to see where to start
-      const { data: profile, error: queryError } = await supabase
-        .from('users')
-        .select('full_name,country,ton_wallet,phone')
-        .eq('id', user.id)
-        .maybeSingle()
+      try {
+        const docRef = doc(db, 'users', currentUser.uid)
+        const docSnap = await getDoc(docRef)
 
-      if (queryError) {
-        // Handle error if needed
-      }
+        if (docSnap.exists()) {
+          const profile = docSnap.data()
+          setFormData({
+            full_name: profile.fullName || '',
+            phone: profile.phone || '',
+            ton_wallet: profile.tonWallet || '',
+            country: profile.country || '',
+          })
 
-      if (profile) {
-        setFormData({
-          full_name: profile.full_name || '',
-          phone: profile.phone || '',
-          ton_wallet: profile.ton_wallet || '',
-          country: profile.country || '',
-        })
+          // Logic to determine which step to show - EXTREMELY EXPLICIT
+          const isStep1Complete = profile.fullName?.trim().length > 0 && profile.country?.trim().length > 0;
+          const isStep2Complete = profile.tonWallet?.trim().length > 0 && profile.phone?.trim().length > 0;
 
-        // Logic to determine which step to show - EXTREMELY EXPLICIT
-        const isStep1Complete = profile.full_name?.trim().length > 0 && profile.country?.trim().length > 0;
-        const isStep2Complete = profile.ton_wallet?.trim().length > 0 && profile.phone?.trim().length > 0;
-
-        if (isStep1Complete && isStep2Complete) {
-          router.push('/dashboard')
-        } else if (isStep1Complete) {
-          setStep(2)
-        } else {
-          setStep(1)
+          if (isStep1Complete && isStep2Complete) {
+            router.push('/dashboard')
+          } else if (isStep1Complete) {
+            setStep(2)
+          } else {
+            setStep(1)
+          }
         }
+      } catch (err) {
+        console.error('Error fetching profile:', err)
       }
-    }
-    checkUser()
-  }, [router, supabase])
+    })
+    return () => unsubscribe()
+  }, [router])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -77,22 +75,17 @@ export default function OnboardingPage() {
     setError(null)
 
     try {
-      // 1. Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No authenticated user found')
+      const currentUser = auth.currentUser
+      if (!currentUser) throw new Error('No authenticated user found')
 
-      // 2. Upsert existing profile instead of just updating
-      const { error: upsertError } = await supabase
-        .from('users')
-        .upsert({
-          id: user.id,
-          full_name: formData.full_name,
-          phone: formData.phone,
-          ton_wallet: formData.ton_wallet,
-          country: formData.country,
-        })
-
-      if (upsertError) throw upsertError
+      const docRef = doc(db, 'users', currentUser.uid)
+      await setDoc(docRef, {
+        fullName: formData.full_name,
+        phone: formData.phone,
+        tonWallet: formData.ton_wallet,
+        country: formData.country,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
 
       setStep(3) // Success step
       setTimeout(() => {
@@ -107,20 +100,32 @@ export default function OnboardingPage() {
   const nextStep = async () => {
     if (step === 1 && formData.full_name && formData.country) {
       setLoading(true)
-      // Save Step 1 data to DB with upsert (create if not exists)
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          id: user.id,
-          full_name: formData.full_name.trim(),
-          country: formData.country.trim()
-        })
-      
-      setLoading(false)
-      if (!error) {
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        setError('No user found.')
+        setLoading(false)
+        return
+      }
+
+      try {
+        const docRef = doc(db, 'users', currentUser.uid)
+        await setDoc(docRef, {
+          fullName: formData.full_name.trim(),
+          country: formData.country.trim(),
+          role: 'USER',
+          totalPoints: 0,
+          status: 'ACTIVE',
+          isFlagged: false,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+        
         setStep(2)
-      } else {
+      } catch (err: any) {
+        console.error('Error saving step 1:', err)
         setError('Error saving step 1. Please try again.')
+      } finally {
+        setLoading(false)
       }
     }
   }

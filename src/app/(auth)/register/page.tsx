@@ -3,7 +3,8 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth } from '@/lib/firebase/client'
+import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { Mail, Lock, ArrowRight, UserPlus, Check, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -14,7 +15,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const supabase = createClient()
 
   // Real-time validation checks
   const hasMinLength = password.length >= 8
@@ -46,20 +46,12 @@ export default function RegisterPage() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
-      // After signup, redirect to onboarding
+    try {
+      await createUserWithEmailAndPassword(auth, email, password)
       router.push('/onboarding')
+    } catch (err: any) {
+      setError(err.message || 'Error al crear la cuenta')
+      setLoading(false)
     }
   }
 

@@ -1,47 +1,30 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { NextRequest } from 'next/server';
+import { verifyUser } from '@/lib/firebase/serverAuth';
+import { UnauthorizedError } from '@/lib/api/errors';
+import { successResponse } from '@/lib/api/response';
+import { withErrorHandler } from '@/lib/api/withErrorHandler';
+import { UpdateSystemConfigSchema } from '@/lib/validations/admin.schema';
+import { updateSystemConfig } from '@/services/admin.service';
+import { withRateLimit } from '@/lib/api/withRateLimit';
 
-export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+async function getUserId(request: NextRequest) {
+  const decodedToken = await verifyUser(request);
+  if (!decodedToken) {
+    throw new UnauthorizedError();
   }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceKey)
-
-  try {
-    // Verify requester is admin
-    const { data: requesterProfile } = await supabaseAdmin
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (requesterProfile?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 })
-    }
-
-    const { key, value } = await request.json()
-    
-    if (!key || value === undefined) {
-      return NextResponse.json({ error: 'Missing key or value' }, { status: 400 })
-    }
-
-    const { error } = await supabaseAdmin
-      .from('system_config')
-      .update({ value, updated_at: new Date().toISOString() })
-      .eq('key', key)
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true })
-
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  return decodedToken.uid;
 }
+
+async function postHandler(request: NextRequest) {
+  const userId = await getUserId(request);
+  const body = await request.json();
+  const input = UpdateSystemConfigSchema.parse(body);
+
+  const result = await updateSystemConfig(userId, input);
+
+  return successResponse(result);
+}
+
+export const POST = withErrorHandler(
+  withRateLimit(postHandler, { limit: 60, windowMs: 60000 })
+);

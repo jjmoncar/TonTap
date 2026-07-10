@@ -1,85 +1,38 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { NextRequest } from 'next/server';
+import { verifyUser } from '@/lib/firebase/serverAuth';
+import { UnauthorizedError } from '@/lib/api/errors';
+import { successResponse } from '@/lib/api/response';
+import { withErrorHandler } from '@/lib/api/withErrorHandler';
+import { AdminResolveFraudFlagSchema } from '@/lib/validations/admin.schema';
+import { getFraudFlags, resolveFraudFlag } from '@/services/admin.service';
 
-export async function GET(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+import { withRateLimit } from '@/lib/api/withRateLimit';
 
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+async function getUserId(request: NextRequest) {
+  const decodedToken = await verifyUser(request);
+  if (!decodedToken) {
+    throw new UnauthorizedError();
   }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceKey)
-
-  try {
-    // Verify requester is admin
-    const { data: requesterProfile } = await supabaseAdmin
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (requesterProfile?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 })
-    }
-
-    const { data: flags, error } = await supabaseAdmin
-      .from('fraud_flags')
-      .select('*, users(full_name, phone)')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-
-    return NextResponse.json({ flags })
-
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+  return decodedToken.uid;
 }
 
-export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceKey)
-
-  try {
-    // Verify requester is admin
-    const { data: requesterProfile } = await supabaseAdmin
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (requesterProfile?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const { flagId, resolved } = await request.json()
-    
-    if (!flagId || resolved === undefined) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-    }
-
-    const { error } = await supabaseAdmin
-      .from('fraud_flags')
-      .update({ resolved })
-      .eq('id', flagId)
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true })
-
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+async function getHandler(request: NextRequest) {
+  const adminId = await getUserId(request);
+  const result = await getFraudFlags(adminId);
+  return successResponse(result);
 }
+
+async function postHandler(request: NextRequest) {
+  const adminId = await getUserId(request);
+  const body = await request.json();
+  const input = AdminResolveFraudFlagSchema.parse(body);
+  const result = await resolveFraudFlag(adminId, input);
+  return successResponse(result);
+}
+
+export const GET = withErrorHandler(
+  withRateLimit(getHandler, { limit: 60, windowMs: 60000 })
+);
+export const POST = withErrorHandler(
+  withRateLimit(postHandler, { limit: 60, windowMs: 60000 })
+);

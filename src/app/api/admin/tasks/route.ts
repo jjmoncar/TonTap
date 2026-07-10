@@ -1,139 +1,52 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { NextRequest } from 'next/server';
+import { verifyUser } from '@/lib/firebase/serverAuth';
+import { UnauthorizedError } from '@/lib/api/errors';
+import { successResponse } from '@/lib/api/response';
+import { withErrorHandler } from '@/lib/api/withErrorHandler';
+import { CreateTaskSchema, UpdateTaskSchema } from '@/lib/validations/admin.schema';
+import { createTask, updateTask, deleteTask } from '@/services/admin.service';
 
-// Initialize Supabase admin client
-const getSupabaseAdmin = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Server configuration error')
+import { withRateLimit } from '@/lib/api/withRateLimit';
+
+async function getUserId(request: NextRequest) {
+  const decodedToken = await verifyUser(request);
+  if (!decodedToken) {
+    throw new UnauthorizedError();
   }
-  return createAdminClient(supabaseUrl, supabaseServiceKey)
+  return decodedToken.uid;
 }
 
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const supabaseAdmin = getSupabaseAdmin()
-
-    // Verify requester is admin
-    const { data: requesterProfile } = await supabaseAdmin
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (requesterProfile?.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Forbidden. Admin access required.' }, { status: 403 })
-    }
-
-    const payload = await request.json()
-
-    const { data, error } = await supabaseAdmin
-      .from('tasks')
-      .insert([{ ...payload, is_active: true }])
-      .select()
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true, data })
-  } catch (error: any) {
-    console.error('Error creating task:', error)
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
-  }
+async function postHandler(request: NextRequest) {
+  const userId = await getUserId(request);
+  const body = await request.json();
+  const input = CreateTaskSchema.parse(body);
+  const result = await createTask(userId, input);
+  return successResponse(result);
 }
 
-export async function PUT(request: Request) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const supabaseAdmin = getSupabaseAdmin()
-
-    // Verify requester is admin
-    const { data: requesterProfile } = await supabaseAdmin
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (requesterProfile?.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Forbidden. Admin access required.' }, { status: 403 })
-    }
-
-    const payload = await request.json()
-    
-    if (!payload.id) {
-      return NextResponse.json({ success: false, error: 'Missing task ID' }, { status: 400 })
-    }
-
-    const { id, ...updateData } = payload
-
-    const { data, error } = await supabaseAdmin
-      .from('tasks')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true, data })
-  } catch (error: any) {
-    console.error('Error updating task:', error)
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
-  }
+async function putHandler(request: NextRequest) {
+  const userId = await getUserId(request);
+  const body = await request.json();
+  const input = UpdateTaskSchema.parse(body);
+  const result = await updateTask(userId, input);
+  return successResponse(result);
 }
 
-export async function DELETE(request: Request) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const supabaseAdmin = getSupabaseAdmin()
-
-    // Verify requester is admin
-    const { data: requesterProfile } = await supabaseAdmin
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (requesterProfile?.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Forbidden. Admin access required.' }, { status: 403 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Missing task ID' }, { status: 400 })
-    }
-
-    const { error } = await supabaseAdmin
-      .from('tasks')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error('Error deleting task:', error)
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
-  }
+async function deleteHandler(request: NextRequest) {
+  const userId = await getUserId(request);
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+  if (!id) throw new Error('Missing task ID'); // Handled by generic error or we can create ValidationError
+  const result = await deleteTask(userId, id);
+  return successResponse(result);
 }
+
+export const POST = withErrorHandler(
+  withRateLimit(postHandler, { limit: 60, windowMs: 60000 })
+);
+export const PUT = withErrorHandler(
+  withRateLimit(putHandler, { limit: 60, windowMs: 60000 })
+);
+export const DELETE = withErrorHandler(
+  withRateLimit(deleteHandler, { limit: 60, windowMs: 60000 })
+);

@@ -3,7 +3,8 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth } from '@/lib/firebase/client'
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 import { Mail, Lock, ArrowRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -13,38 +14,32 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
+    try {
+      await signInWithEmailAndPassword(auth, email, password)
       router.push('/dashboard')
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión')
+      setLoading(false)
     }
   }
 
   const handleGoogleLogin = async () => {
-    let origin = window.location.origin;
-    if (origin.includes('0.0.0.0')) {
-      origin = origin.replace('0.0.0.0', 'localhost').replace('https://', 'http://');
+    setLoading(true)
+    setError(null)
+    try {
+      const provider = new GoogleAuthProvider()
+      await signInWithPopup(auth, provider)
+      router.push('/dashboard')
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión con Google')
+      setLoading(false)
     }
-
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${origin}/auth/callback`,
-      },
-    })
   }
 
   return (

@@ -3,7 +3,9 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { auth, db } from '@/lib/firebase/client'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
 import { 
   LayoutDashboard, 
   ListTodo, 
@@ -22,31 +24,32 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.push('/login')
         return
       }
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single()
+      try {
+        const docRef = doc(db, 'users', user.uid)
+        const docSnap = await getDoc(docRef)
+        const profile = docSnap.exists() ? docSnap.data() : null
 
-      if (profile?.role !== 'ADMIN') {
+        if (profile?.role !== 'ADMIN') {
+          router.push('/dashboard')
+        } else {
+          setLoading(false)
+        }
+      } catch (err) {
+        console.error('Error verifying admin status:', err)
         router.push('/dashboard')
-      } else {
-        setLoading(false)
       }
-    }
+    })
     
-    checkAdmin()
+    return () => unsubscribe()
   }, [])
 
   const navItems = [
