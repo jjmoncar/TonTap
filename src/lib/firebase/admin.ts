@@ -3,20 +3,28 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 
 if (getApps().length === 0) {
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID
+  const projectId = process.env.FIREBASE_PROJECT_ID
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
   const privateKey = process.env.FIREBASE_PRIVATE_KEY
 
-  if (projectId && clientEmail && privateKey) {
-    initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey: privateKey.replace(/\\n/g, '\n'),
-      }),
-    })
-  } else {
-    console.warn('Firebase Admin credentials are missing! Using default local developer initialization.')
+  try {
+    if (projectId && clientEmail && privateKey) {
+      initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey: privateKey.replace(/\\n/g, '\n').replace(/"/g, ''),
+        }),
+      })
+    } else {
+      console.warn('Firebase Admin credentials are missing! Using default local developer initialization.')
+      initializeApp({
+        projectId: projectId || 'mock-project',
+      })
+    }
+  } catch (error) {
+    console.error('Firebase Admin initialization error:', error)
+    // Fallback in case of credential parsing error
     initializeApp({
       projectId: projectId || 'mock-project',
     })
