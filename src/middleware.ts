@@ -22,7 +22,7 @@ export function middleware(request: NextRequest) {
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    frame-src 'self' https://www.google.com/ https://recaptcha.google.com/;
+    frame-src 'self' https://www.google.com/ https://recaptcha.google.com/ ${firebaseDomain} https://*.firebaseapp.com;
     connect-src 'self' ${firebaseDomain} https://*.googleapis.com https://*.firebaseapp.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.google.com/recaptcha/ https://www.gstatic.com/;
     upgrade-insecure-requests;
   `.replace(/\s{2,}/g, ' ').trim()
