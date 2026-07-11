@@ -21,14 +21,15 @@ export function withRateLimit(
 ) {
   return async (req: NextRequest, ...args: any[]) => {
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown_ip';
+    const path = req.nextUrl?.pathname || req.url || 'unknown path';
     
     // Check IP limit
-    const ipKey = `ip_${ip}_${req.nextUrl.pathname}`;
+    const ipKey = `ip_${ip}_${path}`;
     const ipAllowed = rateLimiter.check(ipKey, config.limit, config.windowMs);
 
     if (!ipAllowed) {
-      logger.warn('Rate limit exceeded by IP', { ip, path: req.nextUrl.pathname });
-      await logAbuse(ip, null, req.nextUrl.pathname, 'IP_RATE_LIMIT_EXCEEDED');
+      logger.warn('Rate limit exceeded by IP', { ip, path });
+      await logAbuse(ip, null, path, 'IP_RATE_LIMIT_EXCEEDED');
       throw new RateLimitError();
     }
 
@@ -44,12 +45,12 @@ export function withRateLimit(
     }
 
     if (userId) {
-      const userKey = `user_${userId}_${req.nextUrl.pathname}`;
+      const userKey = `user_${userId}_${path}`;
       const userAllowed = rateLimiter.check(userKey, config.limit, config.windowMs);
 
       if (!userAllowed) {
-        logger.warn('Rate limit exceeded by User', { userId, ip, path: req.nextUrl.pathname });
-        await logAbuse(ip, userId, req.nextUrl.pathname, 'USER_RATE_LIMIT_EXCEEDED');
+        logger.warn('Rate limit exceeded by User', { userId, ip, path });
+        await logAbuse(ip, userId, path, 'USER_RATE_LIMIT_EXCEEDED');
         throw new RateLimitError();
       }
     }
