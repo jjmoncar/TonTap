@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { auth, db } from '@/lib/firebase/client'
+import { doc, getDoc } from 'firebase/firestore'
+import { fetchWithAuth } from '@/lib/api/client'
 import { User, Mail, Wallet, Shield, Bell, Smartphone, Loader2, X, Send } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -16,7 +18,33 @@ export default function SettingsPage() {
   })
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false)
   const [supportMessage, setSupportMessage] = useState('')
-  const supabase = createClient()
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchProfile(user)
+      } else {
+        setLoading(false)
+      }
+    })
+    return () => unsubscribe()
+  }, [])
+
+  const fetchProfile = async (user: any) => {
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid))
+      if (snap.exists()) {
+        const data = snap.data()
+        setProfile(data)
+        setFormData({
+          full_name: data?.full_name || '',
+          ton_wallet: data?.ton_wallet || ''
+        })
+      }
+    } catch (e) {
+      console.error(e)
+    }
+    setLoading(false)
+  }
 
   const handleSupportSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,36 +54,15 @@ export default function SettingsPage() {
     setSupportMessage('')
   }
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle()
-        setProfile(data)
-        setFormData({
-          full_name: data?.full_name || '',
-          ton_wallet: data?.ton_wallet || ''
-        })
-      }
-      setLoading(false)
-    }
-    fetchProfile()
-  }, [supabase])
-
   const handleSave = async () => {
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = auth.currentUser
     if (user) {
       try {
-        const response = await fetch('/api/user/settings', {
+        const response = await fetchWithAuth('/api/user/settings', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: user.id,
+            id: user.uid,
             full_name: formData.full_name,
             ton_wallet: formData.ton_wallet
           })

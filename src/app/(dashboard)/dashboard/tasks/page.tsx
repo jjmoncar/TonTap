@@ -15,7 +15,9 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ReCAPTCHA from 'react-google-recaptcha'
-import { createClient } from '@/lib/supabase/client'
+import { auth, db } from '@/lib/firebase/client'
+import { collection, query, where, getDocs } from 'firebase/firestore'
+import { fetchWithAuth } from '@/lib/api/client'
 
 export default function TasksPage({
   searchParams,
@@ -37,15 +39,13 @@ export default function TasksPage({
   const adWindowRef = useRef<Window | null>(null)
   const originalTitleRef = useRef<string>('')
 
-  const supabase = createClient()
-
   const handleStartTask = async (task: any, openWindow = true) => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = auth.currentUser
     if (!user) return
 
     // 1. Start session via secure API route
     try {
-      const response = await fetch(`/api/tasks/${task.id}/start`, {
+      const response = await fetchWithAuth(`/api/tasks/${task.id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -71,32 +71,31 @@ export default function TasksPage({
     }
   }
 
-  const fetchTasks = async (startId?: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    // Get all active tasks
-    const { data: allTasks } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('is_active', true)
+  const fetchTasks = async (user: any, startId?: string) => {
+    try {
+      const qAll = query(collection(db, 'tasks'), where('is_active', '==', true))
+      const allTasksSnap = await getDocs(qAll)
+      const allTasks = allTasksSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    // Get user's completed sessions for today
-    const today = new Date().toISOString().split('T')[0]
-    const { data: completedSessions } = await supabase
-      .from('task_sessions')
-      .select('task_id')
-      .eq('user_id', user?.id)
-      .eq('status', 'COMPLETED')
-      .gte('completed_at', today)
+      const today = new Date().toISOString().split('T')[0]
+      const qDone = query(
+        collection(db, 'task_sessions'),
+        where('userId', '==', user.uid),
+        where('status', '==', 'COMPLETED'),
+        where('completedAt', '>=', today)
+      )
+      const doneSnap = await getDocs(qDone)
+      const completedIds = doneSnap.docs.map(d => d.data().taskId)
 
-    const completedIds = completedSessions?.map((s: any) => s.task_id) || []
+      const processedTasks = allTasks.map((t: any) => ({
+        ...t,
+        status: completedIds.includes(t.id) ? 'COMPLETED' : 'IN_PROGRESS'
+      }))
 
-    const processedTasks = allTasks?.map((t: any) => ({
-      ...t,
-      status: completedIds.includes(t.id) ? 'COMPLETED' : 'IN_PROGRESS'
-    })) || []
-
-    setTasks(processedTasks)
+      setTasks(processedTasks)
+    } catch (e) {
+      console.error(e)
+    }
     setLoading(false)
 
     // Si se pasa un ID para autoiniciar y la tarea no está completada
@@ -115,7 +114,14 @@ export default function TasksPage({
   }
 
   useEffect(() => {
-    fetchTasks(startTaskId)
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchTasks(user, startTaskId)
+      } else {
+        setLoading(false)
+      }
+    })
+    return () => unsubscribe()
   }, [startTaskId])
 
   useEffect(() => {
@@ -193,7 +199,7 @@ export default function TasksPage({
 
     setVerifying(true)
     try {
-      const response = await fetch(`/api/tasks/${activeTask.id}/complete`, {
+      const response = await fetchWithAuth(`/api/tasks/${activeTask.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -205,7 +211,7 @@ export default function TasksPage({
       const result = await response.json()
       if (result.success) {
         setActiveTask(null)
-        fetchTasks() // Refresh list
+        if (auth.currentUser) fetchTasks(auth.currentUser) // Refresh list
       } else {
         alert(result.error || 'Verification failed')
       }

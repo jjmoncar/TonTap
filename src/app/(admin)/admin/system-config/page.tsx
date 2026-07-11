@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
+import { fetchWithAuth } from '@/lib/api/client'
 import { 
   Settings2, 
   Save, 
@@ -59,7 +60,7 @@ export default function SystemConfigPage() {
     setSuccessMsg('')
     setErrorMsg('')
     try {
-      const res = await fetch('/api/admin/system-config/update', {
+      const res = await fetchWithAuth('/api/admin/system-config/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value: newValue })

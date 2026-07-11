@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
+import { fetchWithAuth } from '@/lib/api/client'
 import { 
   Users, 
   Search, 
@@ -48,7 +49,7 @@ export default function AdminUsersPage() {
   const handleAction = async (userId: string, action: string, payload: any) => {
     setProcessing(userId)
     try {
-      const res = await fetch('/api/admin/users/update', {
+      const res = await fetchWithAuth('/api/admin/users/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, action, payload })

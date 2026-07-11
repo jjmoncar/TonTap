@@ -14,8 +14,8 @@ import {
   Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
-
+import { auth, db } from '@/lib/firebase/client'
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore'
 type Tab = 'tasks' | 'points' | 'withdrawals'
 
 export default function HistoryPage() {
@@ -27,43 +27,49 @@ export default function HistoryPage() {
     withdrawals: [] as any[]
   })
 
-  const supabase = createClient()
-
   useEffect(() => {
-    fetchHistory()
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchHistory(user)
+      } else {
+        setLoading(false)
+      }
+    })
+    return () => unsubscribe()
   }, [])
 
-  const fetchHistory = async () => {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  const fetchHistory = async (user: any) => {
+    try {
+      // Fetch Task History
+      const qTasks = query(collection(db, 'task_sessions'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
+      const snapTasks = await getDocs(qTasks)
+      const tasks = await Promise.all(snapTasks.docs.map(async d => {
+        const data = d.data()
+        let taskDetails = null
+        if (data.taskId) {
+           const tDoc = await getDoc(doc(db, 'tasks', data.taskId))
+           if (tDoc.exists()) taskDetails = tDoc.data()
+        }
+        return { id: d.id, ...data, tasks: taskDetails, created_at: data.createdAt?.toDate() || new Date() }
+      }))
 
-    // Fetch Task History
-    const { data: tasks } = await supabase
-      .from('task_sessions')
-      .select('*, tasks(title)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+      // Fetch Points History
+      const qPoints = query(collection(db, 'point_transactions'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
+      const snapPoints = await getDocs(qPoints)
+      const points = snapPoints.docs.map(d => {
+         const data = d.data()
+         return { id: d.id, ...data, created_at: data.createdAt?.toDate() || new Date() }
+      })
 
-    // Fetch Points History
-    const { data: points } = await supabase
-      .from('point_transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+      // Fetch Withdrawals History
+      const qWithdrawals = query(collection(db, 'withdrawal_requests'), where('user_id', '==', user.uid), orderBy('requested_at', 'desc'))
+      const snapWithdrawals = await getDocs(qWithdrawals)
+      const withdrawals = snapWithdrawals.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    // Fetch Withdrawals History
-    const { data: withdrawals } = await supabase
-      .from('withdrawal_requests')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('requested_at', { ascending: false })
-
-    setData({
-      tasks: tasks || [],
-      points: points || [],
-      withdrawals: withdrawals || []
-    })
+      setData({ tasks, points, withdrawals })
+    } catch (e) {
+      console.error(e)
+    }
     setLoading(false)
   }
 
@@ -131,13 +137,13 @@ export default function HistoryPage() {
                       </td>
                       <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{row.tasks?.title}</td>
                       <td className="px-6 py-4">
-                        <span className={`font-bold ${row.status === 'completed' ? 'text-emerald-500' : 'text-slate-400'}`}>
-                          {row.status === 'completed' ? `+${row.tasks?.reward_points}` : '0'} pts
+                        <span className={`font-bold ${row.status === 'COMPLETED' ? 'text-emerald-500' : 'text-slate-400'}`}>
+                          {row.status === 'COMPLETED' ? `+${row.tasks?.points_reward || 0}` : '0'} pts
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider ${
-                          row.status === 'completed' ? 'text-emerald-500 bg-emerald-50' : 'text-amber-500 bg-amber-50'
+                          row.status === 'COMPLETED' ? 'text-emerald-500 bg-emerald-50' : 'text-amber-500 bg-amber-50'
                         }`}>
                           {row.status}
                         </span>

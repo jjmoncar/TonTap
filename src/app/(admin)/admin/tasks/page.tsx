@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
+import { fetchWithAuth } from '@/lib/api/client'
 export default function AdminTasksPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,13 +70,13 @@ export default function AdminTasksPage() {
 
     try {
       if (editingId) {
-        await fetch('/api/admin/tasks', {
+        await fetchWithAuth('/api/admin/tasks', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingId, ...payload })
         })
       } else {
-        await fetch('/api/admin/tasks', {
+        await fetchWithAuth('/api/admin/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -93,7 +94,7 @@ export default function AdminTasksPage() {
 
   const toggleStatus = async (task: any) => {
     try {
-      await fetch('/api/admin/tasks', {
+      await fetchWithAuth('/api/admin/tasks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: task.id, is_active: !task.is_active })

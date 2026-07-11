@@ -13,6 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { collection, query, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
+import { fetchWithAuth } from '@/lib/api/client'
 
 export default function FraudAlertsPage() {
   const [flags, setFlags] = useState<any[]>([])
@@ -49,7 +50,7 @@ export default function FraudAlertsPage() {
   const handleResolve = async (flagId: string, resolved: boolean) => {
     setProcessing(flagId)
     try {
-      const res = await fetch('/api/admin/fraud', {
+      const res = await fetchWithAuth('/api/admin/fraud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flagId, resolved })
@@ -70,7 +71,7 @@ export default function FraudAlertsPage() {
   const handleBanUser = async (userId: string) => {
     if (!confirm('Are you sure you want to ban this user?')) return
     try {
-      const res = await fetch('/api/admin/users/update', {
+      const res = await fetchWithAuth('/api/admin/users/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, action: 'UPDATE_STATUS', payload: { status: 'BANNED' } })

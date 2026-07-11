@@ -12,8 +12,9 @@ import {
   Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
-
+import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore'
+import { auth, db } from '@/lib/firebase/client'
+import { fetchWithAuth } from '@/lib/api/client'
 export default function WithdrawPage() {
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
@@ -22,48 +23,46 @@ export default function WithdrawPage() {
   const [history, setHistory] = useState<any[]>([])
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  const supabase = createClient()
   const [tonRate, setTonRate] = useState(0.00001)
   const [minWithdraw, setMinWithdraw] = useState(10000)
 
   useEffect(() => {
-    fetchData()
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchData(user)
+      } else {
+        setFetching(false)
+      }
+    })
+    return () => unsubscribe()
   }, [])
 
-  const fetchData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
+  const fetchData = async (user: any) => {
+    try {
       // Get system config
-      const { data: configs } = await supabase
-        .from('system_config')
-        .select('key, value')
-        .in('key', ['ton_per_point', 'min_withdrawal_points'])
-        
-      if (configs) {
-        const tr = configs.find((c: any) => c.key === 'ton_per_point')?.value
-        const mw = configs.find((c: any) => c.key === 'min_withdrawal_points')?.value
-        if (tr) setTonRate(Number(tr))
-        if (mw) setMinWithdraw(Number(mw))
+      const configSnap = await getDoc(doc(db, 'system_config', 'global'))
+      if (configSnap.exists()) {
+        const configs = configSnap.data()
+        if (configs.ton_per_point) setTonRate(Number(configs.ton_per_point))
+        if (configs.min_withdrawal_points) setMinWithdraw(Number(configs.min_withdrawal_points))
       }
 
       // Get user points and wallet
-      const { data: profileData } = await supabase
-        .from('users')
-        .select('total_points, ton_wallet')
-        .eq('id', user.id)
-        .single()
-      
-      setProfile(profileData)
+      const profileSnap = await getDoc(doc(db, 'users', user.uid))
+      if (profileSnap.exists()) {
+        setProfile(profileSnap.data())
+      }
 
       // Get withdrawal history
-      const { data: historyData } = await supabase
-        .from('withdrawal_requests')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('requested_at', { ascending: false })
-      
-      setHistory(historyData || [])
+      const q = query(
+        collection(db, 'withdrawal_requests'),
+        where('user_id', '==', user.uid),
+        orderBy('requested_at', 'desc')
+      )
+      const historySnap = await getDocs(q)
+      setHistory(historySnap.docs.map(d => d.data()))
+    } catch (error) {
+      console.error(error)
     }
     setFetching(false)
   }
@@ -74,9 +73,8 @@ export default function WithdrawPage() {
     setError(null)
 
     try {
-      const response = await fetch('/api/withdraw/request', {
+      const response = await fetchWithAuth('/api/withdraw/request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amountPoints: Number(amount) })
       })
 
@@ -84,7 +82,7 @@ export default function WithdrawPage() {
       if (result.success) {
         setSuccess(true)
         setAmount('')
-        fetchData() // Refresh balance and history
+        if (auth.currentUser) fetchData(auth.currentUser) // Refresh balance and history
       } else {
         setError(result.error || 'Withdrawal failed')
       }

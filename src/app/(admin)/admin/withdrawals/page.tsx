@@ -5,6 +5,7 @@ import { Wallet, CheckCircle2, XCircle, Clock, ExternalLink, Search, Loader2, Se
 import { motion, AnimatePresence } from 'framer-motion'
 import { collection, query, orderBy, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
+import { fetchWithAuth } from '@/lib/api/client'
 
 export default function AdminWithdrawals() {
   const [requests, setRequests] = useState<any[]>([])
@@ -47,7 +48,7 @@ export default function AdminWithdrawals() {
 
     setProcessing(id)
     try {
-      const response = await fetch('/api/admin/withdrawals', {
+      const response = await fetchWithAuth('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'APPROVE', id, txHash })
@@ -70,7 +71,7 @@ export default function AdminWithdrawals() {
     
     setProcessing(id)
     try {
-      const response = await fetch('/api/admin/withdrawals', {
+      const response = await fetchWithAuth('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'REJECT', id })
