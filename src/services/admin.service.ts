@@ -29,19 +29,19 @@ const mapToFirestore = (payload: any) => {
   if (payload.title !== undefined) result.title = payload.title;
   if (payload.url !== undefined) result.url = payload.url;
   
-  if (payload.exposure_seconds !== undefined) result.exposureSeconds = payload.exposure_seconds;
-  else if (payload.exposureSeconds !== undefined) result.exposureSeconds = payload.exposureSeconds;
+  if (payload.exposure_seconds !== undefined) result.exposure_seconds = payload.exposure_seconds;
+  else if (payload.exposureSeconds !== undefined) result.exposure_seconds = payload.exposureSeconds;
   
-  if (payload.points_reward !== undefined) result.pointsReward = payload.points_reward;
-  else if (payload.pointsReward !== undefined) result.pointsReward = payload.pointsReward;
+  if (payload.points_reward !== undefined) result.points_reward = payload.points_reward;
+  else if (payload.pointsReward !== undefined) result.points_reward = payload.pointsReward;
   
-  if (payload.is_active !== undefined) result.isActive = payload.is_active;
-  else if (payload.isActive !== undefined) result.isActive = payload.isActive;
+  if (payload.is_active !== undefined) result.is_active = payload.is_active;
+  else if (payload.isActive !== undefined) result.is_active = payload.isActive;
   
-  if (payload.sort_order !== undefined) result.sortOrder = payload.sort_order;
-  else if (payload.sortOrder !== undefined) result.sortOrder = payload.sortOrder;
+  if (payload.sort_order !== undefined) result.sort_order = payload.sort_order;
+  else if (payload.sortOrder !== undefined) result.sort_order = payload.sortOrder;
   
-  result.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+  result.updated_at = admin.firestore.FieldValue.serverTimestamp();
   return result;
 };
 
@@ -49,8 +49,8 @@ export const createTask = async (userId: string, input: CreateTaskInput) => {
   await verifyAdmin(userId);
 
   const taskData = mapToFirestore(input);
-  taskData.createdAt = admin.firestore.FieldValue.serverTimestamp();
-  if (taskData.isActive === undefined) taskData.isActive = true;
+  taskData.created_at = admin.firestore.FieldValue.serverTimestamp();
+  if (taskData.is_active === undefined) taskData.is_active = true;
 
   const taskRef = adminDb.collection('tasks').doc();
   await taskRef.set(taskData);

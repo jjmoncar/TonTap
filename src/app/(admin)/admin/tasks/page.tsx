@@ -69,25 +69,30 @@ export default function AdminTasksPage() {
     }
 
     try {
+      let res;
       if (editingId) {
-        await fetchWithAuth('/api/admin/tasks', {
+        res = await fetchWithAuth('/api/admin/tasks', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingId, ...payload })
         })
       } else {
-        await fetchWithAuth('/api/admin/tasks', {
+        res = await fetchWithAuth('/api/admin/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         })
       }
-    } catch (error) {
+      
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save task')
+      
+      setIsModalOpen(false)
+    } catch (error: any) {
       console.error('Error saving task:', error)
-      alert('Error saving task')
+      alert(error.message || 'Error saving task')
     }
 
-    setIsModalOpen(false)
     setSaving(false)
     fetchTasks()
   }

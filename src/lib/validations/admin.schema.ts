@@ -22,7 +22,7 @@ export type UpdateSystemConfigInput = z.infer<typeof UpdateSystemConfigSchema>;
 
 export const CreateTaskSchema = z.object({
   title: z.string().min(1, 'El título es requerido').transform(escapeHTML),
-  url: z.string().url('URL inválida').transform(escapeHTML).optional(),
+  url: z.string().url('URL inválida').or(z.literal('')).transform(val => escapeHTML(val || '')).optional(),
   exposure_seconds: z.number().int().positive().optional(),
   exposureSeconds: z.number().int().positive().optional(),
   points_reward: z.number().int().positive().optional(),
