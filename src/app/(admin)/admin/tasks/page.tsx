@@ -84,8 +84,18 @@ export default function AdminTasksPage() {
         })
       }
       
-      const json = await res.json()
-      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save task')
+      const text = await res.text()
+      let json
+      try {
+        json = JSON.parse(text)
+      } catch (e) {
+        throw new Error(`Server returned an invalid response (Status ${res.status}): ${text.slice(0, 50)}...`)
+      }
+      
+      if (!res.ok || !json.success) {
+        const errMsg = typeof json.error === 'string' ? json.error : json.error?.message || 'Failed to save task'
+        throw new Error(errMsg)
+      }
       
       setIsModalOpen(false)
     } catch (error: any) {
