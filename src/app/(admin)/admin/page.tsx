@@ -13,16 +13,16 @@ import {
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 
-import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { collection, query, where, getDocs, getCountFromServer } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any[]>([])
   const [actions, setActions] = useState<any[]>([])
   const [chartData, setChartData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
   const router = useRouter()
 
   const colorConfig: Record<string, { bg: string; text: string }> = {
@@ -35,100 +35,104 @@ export default function AdminDashboard() {
   const fetchStats = async () => {
     setLoading(true)
     
-    // Total Users
-    const { count: usersCount } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true })
+    try {
+      // Total Users
+      const usersSnap = await getCountFromServer(collection(db, 'users'))
+      const usersCount = usersSnap.data().count
 
-    // Tasks Completed
-    const { count: tasksCount } = await supabase
-      .from('task_sessions')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'COMPLETED')
+      // Tasks Completed
+      const tasksSnap = await getCountFromServer(query(collection(db, 'task_sessions'), where('status', '==', 'COMPLETED')))
+      const tasksCount = tasksSnap.data().count
 
-    // TON Paid
-    const { data: withdrawals } = await supabase
-      .from('withdrawal_requests')
-      .select('ton_amount')
-      .eq('status', 'COMPLETED')
-    
-    const tonPaid = withdrawals?.reduce((sum: number, req: any) => sum + (Number(req.ton_amount) || 0), 0) || 0
+      // TON Paid
+      const withdrawalsSnap = await getDocs(query(collection(db, 'withdrawal_requests'), where('status', '==', 'COMPLETED')))
+      let tonPaid = 0
+      withdrawalsSnap.forEach((doc) => {
+        const data = doc.data()
+        tonPaid += Number(data.ton_amount) || 0
+      })
 
-    // Pending Withdrawals Count
-    const { count: pendingCount } = await supabase
-      .from('withdrawal_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'PENDING')
+      // Pending Withdrawals Count
+      const pendingSnap = await getCountFromServer(query(collection(db, 'withdrawal_requests'), where('status', '==', 'PENDING')))
+      const pendingCount = pendingSnap.data().count
 
-    // Fraud Flags
-    const { count: fraudCount } = await supabase
-      .from('fraud_flags')
-      .select('*', { count: 'exact', head: true })
-      .eq('resolved', false)
+      // Fraud Flags
+      const fraudSnap = await getCountFromServer(query(collection(db, 'fraud_flags'), where('resolved', '==', false)))
+      const fraudCount = fraudSnap.data().count
+        
+      // Active Tasks
+      const activeTasksSnap = await getCountFromServer(query(collection(db, 'tasks'), where('status', '==', 'ACTIVE')))
+      const activeTasks = activeTasksSnap.data().count
+
+      setStats([
+        { label: 'Total Users', value: usersCount || 0, trend: '+New', icon: Users, color: 'emerald' },
+        { label: 'Tasks Completed', value: tasksCount || 0, trend: '+Active', icon: CheckCircle2, color: 'blue' },
+        { label: 'TON Paid', value: tonPaid.toFixed(2), trend: '+Sent', icon: Wallet, color: 'purple' },
+        { label: 'Pending Withdrawals', value: pendingCount || 0, trend: 'Action Req', icon: ShieldAlert, color: 'amber' },
+      ])
+
+      setActions([
+        { label: 'Pending Withdrawals', count: pendingCount || 0, priority: 'High', href: '/admin/withdrawals' },
+        { label: 'Unresolved Alerts', count: fraudCount || 0, priority: 'Medium', href: '/admin/fraud-alerts' },
+        { label: 'Active Tasks', count: activeTasks || 0, priority: 'Low', href: '/admin/tasks' },
+      ])
+
+      // Generate Chart Data (Last 12 Days)
+      const days = 12
+      const now = new Date()
+      const pastDate = new Date()
+      pastDate.setDate(now.getDate() - days)
       
-    // Active Tasks
-    const { count: activeTasks } = await supabase
-      .from('tasks')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'ACTIVE')
+      // Withdrawals for chart
+      const recentWithdrawalsSnap = await getDocs(
+        query(collection(db, 'withdrawal_requests'), where('status', '==', 'COMPLETED'))
+      )
+      const recentWithdrawals = recentWithdrawalsSnap.docs.map(d => d.data())
+        
+      // Earnings for chart
+      const recentEarningsSnap = await getDocs(
+        query(collection(db, 'point_transactions'), where('type', '==', 'EARNING'))
+      )
+      const recentEarnings = recentEarningsSnap.docs.map(d => d.data())
 
-    setStats([
-      { label: 'Total Users', value: usersCount || 0, trend: '+New', icon: Users, color: 'emerald' },
-      { label: 'Tasks Completed', value: tasksCount || 0, trend: '+Active', icon: CheckCircle2, color: 'blue' },
-      { label: 'TON Paid', value: tonPaid.toFixed(2), trend: '+Sent', icon: Wallet, color: 'purple' },
-      { label: 'Pending Withdrawals', value: pendingCount || 0, trend: 'Action Req', icon: ShieldAlert, color: 'amber' },
-    ])
+      const chart = Array.from({ length: days }).map((_, i) => {
+        const d = new Date()
+        d.setDate(now.getDate() - (days - 1 - i))
+        const dateStr = d.toISOString().split('T')[0]
+        
+        // Match by timestamp or ISO string depending on how it's stored in Firestore
+        const isMatchDate = (field: any) => {
+          if (!field) return false
+          if (typeof field === 'string') return field.startsWith(dateStr)
+          if (field.toDate) return field.toDate().toISOString().startsWith(dateStr)
+          return false
+        }
 
-    setActions([
-      { label: 'Pending Withdrawals', count: pendingCount || 0, priority: 'High', href: '/admin/withdrawals' },
-      { label: 'Unresolved Alerts', count: fraudCount || 0, priority: 'Medium', href: '/admin/fraud-alerts' },
-      { label: 'Active Tasks', count: activeTasks || 0, priority: 'Low', href: '/admin/tasks' },
-    ])
-
-    // Generate Chart Data (Last 12 Days)
-    const days = 12
-    const now = new Date()
-    const pastDate = new Date()
-    pastDate.setDate(now.getDate() - days)
-    
-    const { data: recentWithdrawals } = await supabase
-      .from('withdrawal_requests')
-      .select('ton_amount, requested_at')
-      .gte('requested_at', pastDate.toISOString())
-      .eq('status', 'COMPLETED')
+        const dayWithdrawals = recentWithdrawals.filter((w: any) => isMatchDate(w.requested_at) || isMatchDate(w.timestamp))
+        const payout = dayWithdrawals.reduce((sum: number, w: any) => sum + Number(w.ton_amount), 0)
+        
+        const dayEarnings = recentEarnings.filter((e: any) => isMatchDate(e.created_at) || isMatchDate(e.timestamp))
+        const earn = dayEarnings.reduce((sum: number, e: any) => sum + (Number(e.amount) * 0.00001), 0)
+        
+        return { 
+          label: d.getDate().toString(),
+          earn: Math.max(earn, 0.05), // Add small baseline for visual
+          payout: Math.max(payout, 0.02)
+        }
+      })
       
-    const { data: recentEarnings } = await supabase
-      .from('point_transactions')
-      .select('amount, created_at')
-      .gte('created_at', pastDate.toISOString())
-      .eq('type', 'EARNING')
+      const maxVal = Math.max(...chart.map(c => Math.max(c.earn, c.payout)))
+      setChartData(chart.map(c => ({
+        ...c,
+        earnHeight: maxVal > 0 ? (c.earn / maxVal) * 100 : 0,
+        payoutHeight: maxVal > 0 ? (c.payout / maxVal) * 100 : 0
+      })))
 
-    const chart = Array.from({ length: days }).map((_, i) => {
-      const d = new Date()
-      d.setDate(now.getDate() - (days - 1 - i))
-      const dateStr = d.toISOString().split('T')[0]
-      
-      const dayWithdrawals = recentWithdrawals?.filter((w: any) => w.requested_at.startsWith(dateStr)) || []
-      const payout = dayWithdrawals.reduce((sum: number, w: any) => sum + Number(w.ton_amount), 0)
-      
-      const dayEarnings = recentEarnings?.filter((e: any) => e.created_at.startsWith(dateStr)) || []
-      const earn = dayEarnings.reduce((sum: number, e: any) => sum + (Number(e.amount) * 0.00001), 0)
-      
-      return { 
-        label: d.getDate().toString(),
-        earn: Math.max(earn, 0.05), // Add small baseline for visual
-        payout: Math.max(payout, 0.02)
-      }
-    })
-    
-    const maxVal = Math.max(...chart.map(c => Math.max(c.earn, c.payout)))
-    setChartData(chart.map(c => ({
-      ...c,
-      earnHeight: (c.earn / maxVal) * 100,
-      payoutHeight: (c.payout / maxVal) * 100
-    })))
-
-    setLoading(false)
+    } catch (error) {
+      console.error('Error fetching admin stats:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
