@@ -8,12 +8,13 @@ type RouteHandler = (req: NextRequest, ...args: any[]) => Promise<NextResponse> 
 
 export function withErrorHandler(handler: RouteHandler): RouteHandler {
   return async (req: NextRequest, ...args: any[]) => {
+    const path = req.nextUrl?.pathname || req.url || 'unknown path';
     try {
       return await handler(req, ...args);
     } catch (error: any) {
       if (error instanceof ZodError || error.name === 'ZodError') {
         const zodError = error as any;
-        logger.warn('Validation Error', { path: req.nextUrl.pathname, errors: zodError.errors });
+        logger.warn('Validation Error', { path, errors: zodError.errors });
         return errorResponse(
           'Datos de entrada inválidos',
           'VALIDATION_ERROR',
@@ -25,15 +26,15 @@ export function withErrorHandler(handler: RouteHandler): RouteHandler {
       if (error instanceof ApiError) {
         // We log 4xx as warnings (except 404), and 5xx as errors
         if (error.statusCode >= 500) {
-          logger.error(`API Error: ${error.message}`, error, { path: req.nextUrl.pathname, code: error.code });
+          logger.error(`API Error: ${error.message}`, error, { path, code: error.code });
         } else if (error.statusCode !== 404) {
-          logger.warn(`API Warning: ${error.message}`, { path: req.nextUrl.pathname, code: error.code });
+          logger.warn(`API Warning: ${error.message}`, { path, code: error.code });
         }
         return errorResponse(error.message, error.code, error.statusCode, error.details);
       }
 
       // Unhandled Internal Errors
-      logger.error('Unhandled API Error', error, { path: req.nextUrl.pathname });
+      logger.error('Unhandled API Error', error, { path });
       return errorResponse('Error interno del servidor', 'INTERNAL_ERROR', 500);
     }
   };
