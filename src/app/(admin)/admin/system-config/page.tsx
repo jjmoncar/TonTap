@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { collection, query, orderBy, getDocs } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { 
   Settings2, 
@@ -23,9 +23,26 @@ export default function SystemConfigPage() {
   const fetchConfig = async () => {
     setLoading(true)
     try {
-      const q = query(collection(db, 'system_config'), orderBy('key', 'asc'))
-      const snap = await getDocs(q)
-      setConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      const docRef = doc(db, 'system_config', 'global')
+      const docSnap = await getDoc(docRef)
+      const data = docSnap.exists() ? docSnap.data() : {}
+
+      const predefinedConfigs = [
+        { key: 'maintenance_mode', description: 'Enable or disable maintenance mode (true/false)' },
+        { key: 'min_withdrawal_points', description: 'Minimum points required for withdrawal' },
+        { key: 'ton_per_point', description: 'Points to TON conversion rate (e.g. 0.00001)' },
+        { key: 'fraud_alerts_enabled', description: 'Enable automated fraud detection (true/false)' },
+        { key: 'bot_detection_consecutive_threshold', description: 'Consecutive fast tasks before triggering bot alert' }
+      ]
+
+      const configsArray = predefinedConfigs.map(c => ({
+        key: c.key,
+        description: c.description,
+        value: data[c.key] !== undefined ? String(data[c.key]) : '',
+        updated_at: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+      }))
+
+      setConfigs(configsArray)
     } catch (err) {
       console.error(err)
     } finally {
