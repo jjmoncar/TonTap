@@ -29,15 +29,19 @@ export const logger = {
 
     // Send to Sentry if it's an error
     if (level === 'error') {
-      if (payload.error) {
-        Sentry.captureException(payload.error, {
-          extra: payload.metadata,
-        });
-      } else {
-        Sentry.captureMessage(payload.message, {
-          level: 'error',
-          extra: payload.metadata,
-        });
+      try {
+        if (payload.error) {
+          Sentry.captureException(payload.error, {
+            extra: payload.metadata,
+          });
+        } else {
+          Sentry.captureMessage(payload.message, {
+            level: 'error',
+            extra: payload.metadata,
+          });
+        }
+      } catch (sentryError) {
+        console.error('Failed to log to Sentry', sentryError);
       }
     }
   },
