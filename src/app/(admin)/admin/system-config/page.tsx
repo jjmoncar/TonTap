@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { collection, query, orderBy, getDocs } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 import { 
   Settings2, 
   Save, 
@@ -19,22 +20,22 @@ export default function SystemConfigPage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const supabase = createClient()
+  const fetchConfig = async () => {
+    setLoading(true)
+    try {
+      const q = query(collection(db, 'system_config'), orderBy('key', 'asc'))
+      const snap = await getDocs(q)
+      setConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchConfig()
   }, [])
-
-  const fetchConfig = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('system_config')
-      .select('*')
-      .order('key', { ascending: true })
-    
-    if (data) setConfigs(data)
-    setLoading(false)
-  }
 
   const handleUpdate = async (key: string, newValue: string) => {
     setSaving(key)

@@ -6,8 +6,8 @@ import {
   Clock, Coins, X, Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
-
+import { collection, query, orderBy, getDocs } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 export default function AdminTasksPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,17 +21,17 @@ export default function AdminTasksPage() {
   const [exposure, setExposure] = useState(30)
   const [points, setPoints] = useState(100)
 
-  const supabase = createClient()
-
   const fetchTasks = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*')
-      .order('created_at', { ascending: false })
-    
-    if (data) setTasks(data)
-    setLoading(false)
+    try {
+      const q = query(collection(db, 'tasks'), orderBy('created_at', 'desc'))
+      const snap = await getDocs(q)
+      setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {

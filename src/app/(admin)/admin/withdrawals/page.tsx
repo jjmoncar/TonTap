@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { Wallet, CheckCircle2, XCircle, Clock, ExternalLink, Search, Loader2, Send } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
+import { collection, query, orderBy, getDocs, doc, getDoc } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 
 export default function AdminWithdrawals() {
   const [requests, setRequests] = useState<any[]>([])
@@ -12,21 +13,31 @@ export default function AdminWithdrawals() {
   const [txHash, setTxHash] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const supabase = createClient()
+  const fetchRequests = async () => {
+    setLoading(true)
+    try {
+      const q = query(collection(db, 'withdrawal_requests'), orderBy('requested_at', 'desc'))
+      const snap = await getDocs(q)
+      const reqs = await Promise.all(snap.docs.map(async (d) => {
+        const data = d.data()
+        let users = null
+        if (data.user_id) {
+          const uDoc = await getDoc(doc(db, 'users', data.user_id))
+          if (uDoc.exists()) users = uDoc.data()
+        }
+        return { id: d.id, ...data, users }
+      }))
+      setRequests(reqs)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchRequests()
   }, [])
-
-  const fetchRequests = async () => {
-    const { data, error } = await supabase
-      .from('withdrawal_requests')
-      .select('*, users(full_name, phone)')
-      .order('requested_at', { ascending: false })
-    
-    if (data) setRequests(data)
-    setLoading(false)
-  }
 
   const handleApprove = async (id: string) => {
     if (!txHash) {

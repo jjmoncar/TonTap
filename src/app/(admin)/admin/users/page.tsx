@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { collection, query, orderBy, getDocs } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 import { 
   Users, 
   Search, 
@@ -27,21 +28,22 @@ export default function AdminUsersPage() {
   const [pointsAmount, setPointsAmount] = useState('')
   const [pointsReason, setPointsReason] = useState('')
 
-  const supabase = createClient()
+  const fetchUsers = async () => {
+    setLoading(true)
+    try {
+      const q = query(collection(db, 'users'), orderBy('created_at', 'desc'))
+      const snap = await getDocs(q)
+      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchUsers()
   }, [])
-
-  const fetchUsers = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false })
-    
-    if (data) setUsers(data)
-    setLoading(false)
-  }
 
   const handleAction = async (userId: string, action: string, payload: any) => {
     setProcessing(userId)

@@ -11,6 +11,8 @@ import {
   Filter
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { collection, query, orderBy, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 
 export default function FraudAlertsPage() {
   const [flags, setFlags] = useState<any[]>([])
@@ -25,11 +27,18 @@ export default function FraudAlertsPage() {
   const fetchFlags = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/admin/fraud')
-      const result = await res.json()
-      if (result.flags) {
-        setFlags(result.flags)
-      }
+      const q = query(collection(db, 'fraud_flags'), orderBy('created_at', 'desc'))
+      const snap = await getDocs(q)
+      const flagsArr = await Promise.all(snap.docs.map(async (d) => {
+        const data = d.data()
+        let users = null
+        if (data.user_id) {
+          const uDoc = await getDoc(doc(db, 'users', data.user_id))
+          if (uDoc.exists()) users = uDoc.data()
+        }
+        return { id: d.id, ...data, users }
+      }))
+      setFlags(flagsArr)
     } catch (err) {
       console.error('Failed to fetch fraud flags', err)
     } finally {
