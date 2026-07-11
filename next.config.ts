@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
     optimizeCss: false
   },
   productionBrowserSourceMaps: false,
-  swcMinify: true,
+  serverExternalPackages: ['firebase-admin'],
   async headers() {
     return [
       {
