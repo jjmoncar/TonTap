@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
     optimizeCss: false
   },
   productionBrowserSourceMaps: false,
-  serverExternalPackages: ['firebase-admin'],
+  serverExternalPackages: ['firebase-admin', 'jose', 'jwks-rsa'],
   async headers() {
     return [
       {
