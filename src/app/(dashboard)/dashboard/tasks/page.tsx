@@ -52,11 +52,11 @@ export default function TasksPage({
 
       const result = await response.json()
       if (!result.success) {
-        alert(result.error || 'Failed to start task')
+        alert(result.error?.message || 'Failed to start task')
         return
       }
       
-      setCurrentSessionId(result.sessionId)
+      setCurrentSessionId(result.data.sessionId)
     } catch (error) {
       console.error('Error starting task:', error)
       alert('Network error while starting task')
@@ -214,7 +214,7 @@ export default function TasksPage({
         setActiveTask(null)
         if (auth.currentUser) fetchTasks(auth.currentUser) // Refresh list
       } else {
-        alert(result.error || 'Verification failed')
+        alert(result.error?.message || 'Verification failed')
       }
     } catch (error) {
       console.error('Error verifying task:', error)
