@@ -48,7 +48,7 @@ export const completeTask = async (userId: string, taskId: string, input: Comple
     const startedAt = session.startedAt.toDate();
     const now = new Date();
     const elapsedSeconds = (now.getTime() - startedAt.getTime()) / 1000;
-    const requiredSeconds = task.exposureSeconds ?? 30;
+    const requiredSeconds = task.exposure_seconds ?? 30;
 
     if (elapsedSeconds < (requiredSeconds - 2)) {
       throw new ApiError('Tiempo de exposición insuficiente', 400, 'TIME_NOT_MET');
@@ -62,7 +62,7 @@ export const completeTask = async (userId: string, taskId: string, input: Comple
     }
 
     const user = userDoc.data()!;
-    const pointsReward = task.pointsReward ?? 0;
+    const pointsReward = task.points_reward ?? 0;
     const newTotalPoints = (user.totalPoints ?? 0) + pointsReward;
 
     // Actualizar puntos del usuario
@@ -128,7 +128,7 @@ async function runBotDetection(userId: string) {
 
       const taskSnapshot = await adminDb.collection('tasks').doc(session.taskId).get();
       const taskData = taskSnapshot.data();
-      const reqSec = taskData?.exposureSeconds ?? 30;
+      const reqSec = taskData?.exposure_seconds ?? 30;
       
       if (diffSeconds >= (reqSec - 2) && diffSeconds <= (reqSec + 3)) {
         suspiciousCount++;
@@ -167,7 +167,7 @@ async function runBotDetection(userId: string) {
 export const startTask = async (userId: string, taskId: string, ip: string, userAgent: string) => {
   // 1. Verificar que la tarea existe y está activa
   const taskDoc = await adminDb.collection('tasks').doc(taskId).get();
-  if (!taskDoc.exists || !taskDoc.data()?.isActive) {
+  if (!taskDoc.exists || !taskDoc.data()?.is_active) {
     throw new ApiError('Tarea no encontrada o inactiva', 404, 'TASK_NOT_FOUND');
   }
 

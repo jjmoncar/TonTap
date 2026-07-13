@@ -73,8 +73,8 @@ export default function DashboardOverview() {
         // 5. Fetch Recommended Tasks
         const recTasksQuery = query(
           collection(db, 'tasks'),
-          where('isActive', '==', true),
-          orderBy('sortOrder', 'asc'),
+          where('is_active', '==', true),
+          orderBy('sort_order', 'asc'),
           limit(4)
         )
         const recTasksSnap = await getDocs(recTasksQuery)
@@ -84,9 +84,9 @@ export default function DashboardOverview() {
             id: doc.id,
             title: data.title,
             url: data.url,
-            exposure_seconds: data.exposureSeconds,
-            points_reward: data.pointsReward,
-            isActive: data.isActive
+            exposure_seconds: data.exposure_seconds,
+            points_reward: data.points_reward,
+            isActive: data.is_active
           }
         })
         setRecommendedTasks(tasksData)

@@ -72,6 +72,7 @@ export default function TasksPage({
   }
 
   const fetchTasks = async (user: any, startId?: string) => {
+    let processedTasks: any[] = []
     try {
       const qAll = query(collection(db, 'tasks'), where('is_active', '==', true))
       const allTasksSnap = await getDocs(qAll)
@@ -82,12 +83,12 @@ export default function TasksPage({
         collection(db, 'task_sessions'),
         where('userId', '==', user.uid),
         where('status', '==', 'COMPLETED'),
-        where('completedAt', '>=', today)
+        where('sessionDate', '==', today)
       )
       const doneSnap = await getDocs(qDone)
       const completedIds = doneSnap.docs.map(d => d.data().taskId)
 
-      const processedTasks = allTasks.map((t: any) => ({
+      processedTasks = allTasks.map((t: any) => ({
         ...t,
         status: completedIds.includes(t.id) ? 'COMPLETED' : 'IN_PROGRESS'
       }))
