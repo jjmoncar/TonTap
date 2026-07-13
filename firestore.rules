@@ -67,7 +67,7 @@ service cloud.firestore {
     // 5. Peticiones de Retiros (withdrawal_requests)
     match /withdrawal_requests/{requestId} {
       // El usuario puede leer sus propios retiros
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (resource.data.user_id == request.auth.uid || isAdmin());
       // NINGUNA escritura directa. Se solicita a través de /api/withdraw/request para validar balances
       allow write: if false;
     }
