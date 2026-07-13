@@ -41,7 +41,7 @@ export default function HistoryPage() {
   const fetchHistory = async (user: any) => {
     try {
       // Fetch Task History
-      const qTasks = query(collection(db, 'task_sessions'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
+      const qTasks = query(collection(db, 'task_sessions'), where('userId', '==', user.uid))
       const snapTasks = await getDocs(qTasks)
       const tasks = await Promise.all(snapTasks.docs.map(async d => {
         const data = d.data()
@@ -50,21 +50,27 @@ export default function HistoryPage() {
            const tDoc = await getDoc(doc(db, 'tasks', data.taskId))
            if (tDoc.exists()) taskDetails = tDoc.data()
         }
-        return { id: d.id, ...data, tasks: taskDetails, created_at: data.createdAt?.toDate() || new Date() }
+        return { id: d.id, ...data, tasks: taskDetails, created_at: data.startedAt?.toDate() || new Date() }
       }))
+      tasks.sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
 
       // Fetch Points History
-      const qPoints = query(collection(db, 'point_transactions'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'))
+      const qPoints = query(collection(db, 'point_transactions'), where('userId', '==', user.uid))
       const snapPoints = await getDocs(qPoints)
       const points = snapPoints.docs.map(d => {
          const data = d.data()
          return { id: d.id, ...data, created_at: data.createdAt?.toDate() || new Date() }
       })
+      points.sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
 
       // Fetch Withdrawals History
-      const qWithdrawals = query(collection(db, 'withdrawal_requests'), where('user_id', '==', user.uid), orderBy('requested_at', 'desc'))
+      const qWithdrawals = query(collection(db, 'withdrawal_requests'), where('user_id', '==', user.uid))
       const snapWithdrawals = await getDocs(qWithdrawals)
-      const withdrawals = snapWithdrawals.docs.map(d => ({ id: d.id, ...d.data() }))
+      const withdrawals = snapWithdrawals.docs.map(d => {
+         const data = d.data()
+         return { id: d.id, ...data, requested_at: data.requested_at?.toDate() || new Date() }
+      })
+      withdrawals.sort((a, b) => b.requested_at.getTime() - a.requested_at.getTime())
 
       setData({ tasks, points, withdrawals })
     } catch (e) {
