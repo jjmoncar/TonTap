@@ -28,16 +28,29 @@ export default function FraudAlertsPage() {
   const fetchFlags = async () => {
     setLoading(true)
     try {
-      const q = query(collection(db, 'fraud_flags'), orderBy('created_at', 'desc'))
-      const snap = await getDocs(q)
+      let snap
+      try {
+        const q = query(collection(db, 'fraud_flags'), orderBy('createdAt', 'desc'))
+        snap = await getDocs(q)
+      } catch {
+        snap = await getDocs(collection(db, 'fraud_flags'))
+      }
       const flagsArr = await Promise.all(snap.docs.map(async (d) => {
         const data = d.data()
+        const uid = data.userId ?? data.user_id
         let users = null
-        if (data.user_id) {
-          const uDoc = await getDoc(doc(db, 'users', data.user_id))
-          if (uDoc.exists()) users = uDoc.data()
+        if (uid) {
+          const uDoc = await getDoc(doc(db, 'users', uid))
+          if (uDoc.exists()) {
+            const uData = uDoc.data()
+            users = {
+              full_name: uData.fullName ?? uData.full_name ?? '',
+              phone: uData.phone ?? '',
+            }
+          }
         }
-        return { id: d.id, ...data, users }
+        const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : (data.created_at?.toDate ? data.created_at.toDate() : new Date())
+        return { id: d.id, ...data, users, created_at: createdAt.toISOString() }
       }))
       setFlags(flagsArr)
     } catch (err) {

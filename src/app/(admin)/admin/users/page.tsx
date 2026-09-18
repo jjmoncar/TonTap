@@ -32,9 +32,24 @@ export default function AdminUsersPage() {
   const fetchUsers = async () => {
     setLoading(true)
     try {
-      const q = query(collection(db, 'users'), orderBy('created_at', 'desc'))
-      const snap = await getDocs(q)
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      // Intentar ordenar por createdAt (camelCase), con fallback sin orden
+      let snap
+      try {
+        const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'))
+        snap = await getDocs(q)
+      } catch {
+        snap = await getDocs(collection(db, 'users'))
+      }
+      setUsers(snap.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          ...data,
+          full_name: data.fullName ?? data.full_name ?? '',
+          total_points: data.totalPoints ?? data.total_points ?? 0,
+          ton_wallet: data.tonWallet ?? data.ton_wallet ?? '',
+        }
+      }))
     } catch (err) {
       console.error(err)
     } finally {
@@ -78,7 +93,8 @@ export default function AdminUsersPage() {
   const filteredUsers = users.filter(u => 
     u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.phone?.includes(searchTerm) ||
-    u.ton_wallet?.toLowerCase().includes(searchTerm.toLowerCase())
+    u.ton_wallet?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.fullName ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (loading) return (
@@ -135,9 +151,9 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <Coins className="w-4 h-4 text-emerald-500" />
-                      <span className="text-sm font-bold text-emerald-500">{user.total_points.toLocaleString()} pts</span>
-                    </div>
+                       <Coins className="w-4 h-4 text-emerald-500" />
+                       <span className="text-sm font-bold text-emerald-500">{(user.total_points ?? 0).toLocaleString()} pts</span>
+                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider ${

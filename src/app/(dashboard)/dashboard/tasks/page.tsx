@@ -38,6 +38,7 @@ export default function TasksPage({
 
   const adWindowRef = useRef<Window | null>(null)
   const originalTitleRef = useRef<string>('')
+  const targetEndTimeRef = useRef<number | null>(null)
 
   const handleStartTask = async (task: any, openWindow = true) => {
     const user = auth.currentUser
@@ -63,7 +64,9 @@ export default function TasksPage({
       return
     }
     setActiveTask(task)
-    setTimeLeft(task.exposure_seconds || 30)
+    const exposureSec = task.exposure_seconds || 30
+    setTimeLeft(exposureSec)
+    targetEndTimeRef.current = Date.now() + exposureSec * 1000
     
     // 2. Open ad URL
     if (openWindow) {
@@ -71,7 +74,7 @@ export default function TasksPage({
     }
   }
 
-  const fetchTasks = async (user: any, startId?: string) => {
+  const fetchTasks = React.useCallback(async (user: any, startId?: string) => {
     let processedTasks: any[] = []
     try {
       const qAll = query(collection(db, 'tasks'), where('is_active', '==', true))
@@ -112,7 +115,7 @@ export default function TasksPage({
         }
       }
     }
-  }
+  }, [])
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -123,7 +126,7 @@ export default function TasksPage({
       }
     })
     return () => unsubscribe()
-  }, [startTaskId])
+  }, [fetchTasks, startTaskId])
 
   useEffect(() => {
     let checkWindowInterval: NodeJS.Timeout
@@ -135,28 +138,38 @@ export default function TasksPage({
           clearInterval(checkWindowInterval)
           setActiveTask(null)
           setCaptchaToken(null)
+          targetEndTimeRef.current = null
           alert('Cerraste la ventana de la tarea antes de tiempo. Se ha cancelado la tarea y perdiste los puntos.')
         }
       }, 1000)
 
       // 2. Monitoreo de regreso a la pestaña original
       const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible' && timeLeft > 0) {
-          if (adWindowRef.current && adWindowRef.current.closed) {
-            clearInterval(checkWindowInterval)
-            setActiveTask(null)
-            setCaptchaToken(null)
-            alert('Cerraste la ventana de la tarea antes de tiempo. Se ha cancelado la tarea y perdiste los puntos.')
-          } else {
-            const confirmStay = window.confirm('¡Cuidado! Aún faltan segundos para terminar la tarea.\n\nSi te quedas aquí perderás los puntos.\n\nPresiona "Cancelar" para abortar la tarea, o "Aceptar" para intentar volver a la tarea.')
-            if (!confirmStay) {
+        if (document.visibilityState === 'visible' && targetEndTimeRef.current) {
+          const remaining = Math.max(0, Math.ceil((targetEndTimeRef.current - Date.now()) / 1000))
+          setTimeLeft(remaining)
+
+          if (remaining > 0) {
+            if (adWindowRef.current && adWindowRef.current.closed) {
+              clearInterval(checkWindowInterval)
               setActiveTask(null)
               setCaptchaToken(null)
+              targetEndTimeRef.current = null
+              alert('Cerraste la ventana de la tarea antes de tiempo. Se ha cancelado la tarea y perdiste los puntos.')
             } else {
-              if (adWindowRef.current) {
-                adWindowRef.current.focus()
+              const confirmStay = window.confirm('¡Cuidado! Aún faltan segundos para terminar la tarea.\n\nSi te quedas aquí perderás los puntos.\n\nPresiona "Cancelar" para abortar la tarea, o "Aceptar" para intentar volver a la tarea.')
+              if (!confirmStay) {
+                setActiveTask(null)
+                setCaptchaToken(null)
+                targetEndTimeRef.current = null
+              } else {
+                if (adWindowRef.current) {
+                  adWindowRef.current.focus()
+                }
               }
             }
+          } else {
+            document.title = '(1) ¡Tarea Lista! - Vuelve aquí'
           }
         }
       }
@@ -172,23 +185,30 @@ export default function TasksPage({
 
   useEffect(() => {
     let timer: NodeJS.Timeout
-    if (activeTask && timeLeft > 0) {
+    if (activeTask && targetEndTimeRef.current) {
       if (!originalTitleRef.current) {
         originalTitleRef.current = document.title || 'TonTap'
       }
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1)
-      }, 1000)
-    } else if (timeLeft === 0 && activeTask) {
-      // Timer finished
-      document.title = '(1) ¡Tarea Lista! - Vuelve aquí'
+
+      const updateRemaining = () => {
+        if (!targetEndTimeRef.current) return
+        const remaining = Math.max(0, Math.ceil((targetEndTimeRef.current - Date.now()) / 1000))
+        setTimeLeft(remaining)
+        if (remaining === 0) {
+          document.title = '(1) ¡Tarea Lista! - Vuelve aquí'
+        }
+      }
+
+      updateRemaining()
+      timer = setInterval(updateRemaining, 500)
     }
     return () => clearInterval(timer)
-  }, [activeTask, timeLeft])
+  }, [activeTask])
 
   useEffect(() => {
     if (!activeTask && originalTitleRef.current) {
       document.title = originalTitleRef.current
+      targetEndTimeRef.current = null
     }
   }, [activeTask])
 
@@ -270,6 +290,17 @@ export default function TasksPage({
       </div>
 
       {/* Task Views */}
+      {loading ? (
+        <div className="flex items-center justify-center min-h-[300px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800">
+          <ListTodo className="w-12 h-12 text-slate-400 mx-auto mb-3 opacity-50" />
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">No tasks available</h3>
+          <p className="text-sm text-slate-500 mt-1">Check back later for new reward tasks.</p>
+        </div>
+      ) : (
       <AnimatePresence mode="wait">
         {view === 'board' ? (
           <motion.div 
@@ -385,6 +416,7 @@ export default function TasksPage({
           </motion.div>
         )}
       </AnimatePresence>
+      )}
 
       {/* Task Session Modal (Active State) */}
       <AnimatePresence>
@@ -405,7 +437,7 @@ export default function TasksPage({
               <div className="p-8 space-y-8 text-center">
                 <div className="space-y-2">
                   <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Task in Progress</h2>
-                  <p className="text-slate-500 text-sm">Please stay on the opened page for at least {activeTask.time} seconds.</p>
+                  <p className="text-slate-500 text-sm">Please stay on the opened page for at least {activeTask.exposure_seconds || 30} seconds.</p>
                 </div>
 
                 <div className="relative w-40 h-40 mx-auto">
@@ -464,7 +496,7 @@ export default function TasksPage({
                 <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-900/20 text-left">
                   <AlertCircle className="w-8 h-8 text-amber-500 shrink-0" />
                   <p className="text-xs text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                    Closing the ad page before the timer ends will invalidate your session and you won't earn points.
+                    Closing the ad page before the timer ends will invalidate your session and you won&apos;t earn points.
                   </p>
                 </div>
               </div>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { auth, db } from '@/lib/firebase/client'
 import { doc, getDoc } from 'firebase/firestore'
 import { fetchWithAuth } from '@/lib/api/client'
-import { User, Mail, Wallet, Shield, Bell, Smartphone, Loader2, X, Send } from 'lucide-react'
+import { User, Wallet, Shield, Smartphone, Loader2, X, Send } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function SettingsPage() {
@@ -34,10 +34,16 @@ export default function SettingsPage() {
       const snap = await getDoc(doc(db, 'users', user.uid))
       if (snap.exists()) {
         const data = snap.data()
-        setProfile(data)
+        const fullName = data?.fullName || data?.full_name || ''
+        const tonWallet = data?.tonWallet || data?.ton_wallet || ''
+        setProfile({
+          ...data,
+          full_name: fullName,
+          ton_wallet: tonWallet
+        })
         setFormData({
-          full_name: data?.full_name || '',
-          ton_wallet: data?.ton_wallet || ''
+          full_name: fullName,
+          ton_wallet: tonWallet
         })
       }
     } catch (e) {

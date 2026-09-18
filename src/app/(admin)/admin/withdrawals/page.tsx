@@ -17,16 +17,36 @@ export default function AdminWithdrawals() {
   const fetchRequests = async () => {
     setLoading(true)
     try {
-      const q = query(collection(db, 'withdrawal_requests'), orderBy('requested_at', 'desc'))
-      const snap = await getDocs(q)
+      let snap
+      try {
+        const q = query(collection(db, 'withdrawal_requests'), orderBy('requestedAt', 'desc'))
+        snap = await getDocs(q)
+      } catch {
+        const q = query(collection(db, 'withdrawal_requests'), orderBy('requested_at', 'desc'))
+        snap = await getDocs(q)
+      }
       const reqs = await Promise.all(snap.docs.map(async (d) => {
         const data = d.data()
+        const uid = data.userId ?? data.user_id
         let users = null
-        if (data.user_id) {
-          const uDoc = await getDoc(doc(db, 'users', data.user_id))
-          if (uDoc.exists()) users = uDoc.data()
+        if (uid) {
+          const uDoc = await getDoc(doc(db, 'users', uid))
+          if (uDoc.exists()) {
+            const uData = uDoc.data()
+            users = {
+              full_name: uData.fullName ?? uData.full_name ?? '',
+              phone: uData.phone ?? '',
+            }
+          }
         }
-        return { id: d.id, ...data, users }
+        return {
+          id: d.id,
+          ...data,
+          ton_amount: data.tonAmount ?? data.ton_amount ?? 0,
+          points_amount: data.pointsAmount ?? data.points_amount ?? 0,
+          ton_wallet: data.tonWallet ?? data.ton_wallet ?? '',
+          users,
+        }
       }))
       setRequests(reqs)
     } catch (err) {
@@ -128,18 +148,20 @@ export default function AdminWithdrawals() {
                   <td className="px-6 py-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-bold text-emerald-500">{req.ton_amount} TON</p>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{req.points_amount.toLocaleString()} pts</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{(req.points_amount || 0).toLocaleString()} pts</p>
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <p className="text-xs font-mono text-slate-400">{req.ton_wallet.slice(0, 8)}...{req.ton_wallet.slice(-8)}</p>
-                      <button 
+                      <p className="text-xs font-mono text-slate-400">
+                        {req.ton_wallet ? `${req.ton_wallet.slice(0, 8)}...${req.ton_wallet.slice(-8)}` : '—'}
+                      </p>
+                      {req.ton_wallet && <button 
                         onClick={() => window.open(`https://tonviewer.com/${req.ton_wallet}`, '_blank')}
                         className="text-slate-600 hover:text-emerald-500 transition-colors"
                       >
                         <ExternalLink className="w-3 h-3" />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                   <td className="px-6 py-4">

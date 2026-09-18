@@ -189,7 +189,7 @@ export default function DashboardOverview() {
               <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-xl flex items-center justify-center text-blue-500">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today's Tasks</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today&apos;s Tasks</span>
             </div>
             <div>
               <h3 className="text-slate-900 dark:text-white text-3xl font-bold tracking-tight">{stats.todayTasks} / {stats.taskLimit}</h3>
@@ -255,7 +255,7 @@ export default function DashboardOverview() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {recommendedTasks.length > 0 ? recommendedTasks.map((task, idx) => (
+            {recommendedTasks.length > 0 ? recommendedTasks.map((task) => (
               <Link 
                 key={task.id} 
                 href={`/dashboard/tasks?start=${task.id}`} 

@@ -40,7 +40,7 @@ export function withRateLimit(
       if (decodedToken) {
         userId = decodedToken.uid;
       }
-    } catch (e) {
+    } catch {
       // Ignore auth errors here, they will be handled by the route handler
     }
 

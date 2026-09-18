@@ -9,15 +9,13 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    console.log("Initializing auth listener with auth:", auth)
     const unsubscribe = onAuthStateChanged(
       auth, 
       (user) => {
-        console.log("onAuthStateChanged fired! User is:", user)
         if (user) {
-          window.location.replace('/dashboard')
+          router.replace('/dashboard')
         } else {
-          window.location.replace('/login')
+          router.replace('/login')
         }
       },
       (error) => {
@@ -25,7 +23,7 @@ export default function Home() {
       }
     )
     return () => unsubscribe()
-  }, [])
+  }, [router])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">

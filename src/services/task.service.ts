@@ -178,24 +178,33 @@ export const startTask = async (userId: string, taskId: string, ip: string, user
   const sessionDoc = await sessionRef.get();
 
   if (sessionDoc.exists) {
-    throw new ApiError('Ya iniciaste esta tarea hoy', 409, 'TASK_ALREADY_STARTED');
+    const sessionData = sessionDoc.data();
+    if (sessionData?.status === 'COMPLETED') {
+      throw new ApiError('Ya completaste esta tarea hoy', 409, 'TASK_ALREADY_COMPLETED');
+    }
+    // Si la sesión quedó IN_PROGRESS (recarga de página o desconexión), reiniciar tiempo de inicio
+    await sessionRef.update({
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ipAddress: ip,
+      userAgent,
+    });
+  } else {
+    // 3. Crear la sesión
+    const sessionData = {
+      id: sessionDocId,
+      userId,
+      taskId,
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      completedAt: null,
+      status: 'IN_PROGRESS',
+      ipAddress: ip,
+      userAgent,
+      captchaValid: false,
+      sessionDate,
+    };
+
+    await sessionRef.set(sessionData);
   }
-
-  // 3. Crear la sesión
-  const sessionData = {
-    id: sessionDocId,
-    userId,
-    taskId,
-    startedAt: admin.firestore.FieldValue.serverTimestamp(),
-    completedAt: null,
-    status: 'IN_PROGRESS',
-    ipAddress: ip,
-    userAgent,
-    captchaValid: false,
-    sessionDate,
-  };
-
-  await sessionRef.set(sessionData);
 
   // 4. Lógica de Detección de Fraude por IP
   if (ip && ip !== 'unknown' && ip !== '') {

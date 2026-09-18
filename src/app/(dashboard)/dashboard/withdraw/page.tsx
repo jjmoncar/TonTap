@@ -8,8 +8,7 @@ import {
   CheckCircle2, 
   Clock, 
   ExternalLink,
-  Info,
-  Loader2
+  Info
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore'
@@ -50,17 +49,54 @@ export default function WithdrawPage() {
       // Get user points and wallet
       const profileSnap = await getDoc(doc(db, 'users', user.uid))
       if (profileSnap.exists()) {
-        setProfile(profileSnap.data())
+        const pData = profileSnap.data()
+        setProfile({
+          ...pData,
+          total_points: pData.totalPoints ?? pData.total_points ?? 0,
+          ton_wallet: pData.tonWallet ?? pData.ton_wallet ?? '',
+        })
       }
 
       // Get withdrawal history
-      const q = query(
-        collection(db, 'withdrawal_requests'),
-        where('user_id', '==', user.uid),
-        orderBy('requested_at', 'desc')
-      )
-      const historySnap = await getDocs(q)
-      setHistory(historySnap.docs.map(d => d.data()))
+      try {
+        const q = query(
+          collection(db, 'withdrawal_requests'),
+          where('userId', '==', user.uid),
+          orderBy('requestedAt', 'desc')
+        )
+        const historySnap = await getDocs(q)
+        setHistory(historySnap.docs.map(d => {
+          const data = d.data()
+          return {
+            id: d.id,
+            ...data,
+            ton_amount: data.tonAmount ?? data.ton_amount ?? 0,
+            points_amount: data.pointsAmount ?? data.points_amount ?? 0,
+            requested_at: data.requestedAt?.toDate ? data.requestedAt.toDate() : (data.requested_at?.toDate ? data.requested_at.toDate() : new Date()),
+          }
+        }))
+      } catch (queryErr) {
+        console.warn('Primary withdrawal query failed, trying fallback:', queryErr)
+        try {
+          const qFallback = query(
+            collection(db, 'withdrawal_requests'),
+            where('user_id', '==', user.uid)
+          )
+          const historySnap = await getDocs(qFallback)
+          setHistory(historySnap.docs.map(d => {
+            const data = d.data()
+            return {
+              id: d.id,
+              ...data,
+              ton_amount: data.tonAmount ?? data.ton_amount ?? 0,
+              points_amount: data.pointsAmount ?? data.points_amount ?? 0,
+              requested_at: data.requestedAt?.toDate ? data.requestedAt.toDate() : (data.requested_at?.toDate ? data.requested_at.toDate() : new Date()),
+            }
+          }))
+        } catch (fallbackErr) {
+          console.error('Error fetching withdrawal history:', fallbackErr)
+        }
+      }
     } catch (error) {
       console.error(error)
     }
@@ -84,10 +120,10 @@ export default function WithdrawPage() {
         setAmount('')
         if (auth.currentUser) fetchData(auth.currentUser) // Refresh balance and history
       } else {
-        setError(result.error || 'Withdrawal failed')
+        setError(result.error?.message || (typeof result.error === 'string' ? result.error : 'Withdrawal failed'))
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.')
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -133,7 +169,7 @@ export default function WithdrawPage() {
                     <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Amount to Withdraw</label>
                     <button 
                       type="button"
-                      onClick={() => setAmount(profile?.total_points.toString())}
+                      onClick={() => setAmount((profile?.total_points ?? 0).toString())}
                       className="text-xs font-bold text-emerald-600 hover:text-emerald-500"
                     >
                       Use Max
@@ -224,7 +260,7 @@ export default function WithdrawPage() {
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-900 dark:text-white">{req.ton_amount} TON</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{req.points_amount.toLocaleString()} PTS • {new Date(req.requested_at).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{(req.points_amount || 0).toLocaleString()} PTS • {new Date(req.requested_at).toLocaleDateString()}</p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end">

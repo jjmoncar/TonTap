@@ -64,11 +64,27 @@ export default function HistoryPage() {
       points.sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
 
       // Fetch Withdrawals History
-      const qWithdrawals = query(collection(db, 'withdrawal_requests'), where('user_id', '==', user.uid))
-      const snapWithdrawals = await getDocs(qWithdrawals)
-      const withdrawals = snapWithdrawals.docs.map(d => {
+      let withdrawalsDocs: any[] = []
+      try {
+        const qWithdrawals = query(collection(db, 'withdrawal_requests'), where('userId', '==', user.uid))
+        const snapWithdrawals = await getDocs(qWithdrawals)
+        withdrawalsDocs = snapWithdrawals.docs
+      } catch {
+        const qWithdrawalsOld = query(collection(db, 'withdrawal_requests'), where('user_id', '==', user.uid))
+        const snapWithdrawals = await getDocs(qWithdrawalsOld)
+        withdrawalsDocs = snapWithdrawals.docs
+      }
+      const withdrawals = withdrawalsDocs.map(d => {
          const data = d.data()
-         return { id: d.id, ...data, requested_at: data.requested_at?.toDate() || new Date() }
+         const reqDate = data.requestedAt?.toDate ? data.requestedAt.toDate() : (data.requested_at?.toDate ? data.requested_at.toDate() : new Date())
+         return {
+           id: d.id,
+           ...data,
+           ton_amount: data.tonAmount ?? data.ton_amount ?? 0,
+           ton_wallet: data.tonWallet ?? data.ton_wallet ?? '',
+           tx_hash: data.txHash ?? data.tx_hash ?? null,
+           requested_at: reqDate,
+         }
       })
       withdrawals.sort((a, b) => b.requested_at.getTime() - a.requested_at.getTime())
 

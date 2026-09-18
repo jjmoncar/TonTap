@@ -55,7 +55,7 @@ export const createTask = async (userId: string, input: CreateTaskInput) => {
   const taskRef = adminDb.collection('tasks').doc();
   await taskRef.set(taskData);
 
-  const { created_at, updated_at, ...safeData } = taskData;
+  const { created_at: _c, updated_at: _u, ...safeData } = taskData;
   return { id: taskRef.id, ...safeData, created_at: new Date().toISOString() };
 };
 

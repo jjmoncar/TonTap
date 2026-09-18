@@ -49,7 +49,7 @@ export default function AdminDashboard() {
       let tonPaid = 0
       withdrawalsSnap.forEach((doc) => {
         const data = doc.data()
-        tonPaid += Number(data.ton_amount) || 0
+        tonPaid += Number(data.tonAmount ?? data.ton_amount) || 0
       })
 
       // Pending Withdrawals Count
@@ -61,7 +61,7 @@ export default function AdminDashboard() {
       const fraudCount = fraudSnap.data().count
         
       // Active Tasks
-      const activeTasksSnap = await getCountFromServer(query(collection(db, 'tasks'), where('status', '==', 'ACTIVE')))
+      const activeTasksSnap = await getCountFromServer(query(collection(db, 'tasks'), where('is_active', '==', true)))
       const activeTasks = activeTasksSnap.data().count
 
       setStats([
@@ -91,7 +91,7 @@ export default function AdminDashboard() {
         
       // Earnings for chart
       const recentEarningsSnap = await getDocs(
-        query(collection(db, 'point_transactions'), where('type', '==', 'EARNING'))
+        query(collection(db, 'point_transactions'), where('type', '==', 'EARN'))
       )
       const recentEarnings = recentEarningsSnap.docs.map(d => d.data())
 
@@ -108,10 +108,16 @@ export default function AdminDashboard() {
           return false
         }
 
-        const dayWithdrawals = recentWithdrawals.filter((w: any) => isMatchDate(w.requested_at) || isMatchDate(w.timestamp))
-        const payout = dayWithdrawals.reduce((sum: number, w: any) => sum + Number(w.ton_amount), 0)
+        const dayWithdrawals = recentWithdrawals.filter((w: any) =>
+          isMatchDate(w.requestedAt) || isMatchDate(w.requested_at) || isMatchDate(w.timestamp)
+        )
+        const payout = dayWithdrawals.reduce((sum: number, w: any) =>
+          sum + Number(w.tonAmount ?? w.ton_amount ?? 0), 0
+        )
         
-        const dayEarnings = recentEarnings.filter((e: any) => isMatchDate(e.created_at) || isMatchDate(e.timestamp))
+        const dayEarnings = recentEarnings.filter((e: any) =>
+          isMatchDate(e.createdAt) || isMatchDate(e.created_at) || isMatchDate(e.timestamp)
+        )
         const earn = dayEarnings.reduce((sum: number, e: any) => sum + (Number(e.amount) * 0.00001), 0)
         
         return { 
