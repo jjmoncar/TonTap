@@ -9,9 +9,12 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
+    let settled = false
+
     const unsubscribe = onAuthStateChanged(
-      auth, 
+      auth,
       (user) => {
+        settled = true
         if (user) {
           router.replace('/dashboard')
         } else {
@@ -19,10 +22,24 @@ export default function Home() {
         }
       },
       (error) => {
-        console.error("onAuthStateChanged error:", error)
+        settled = true
+        console.error('onAuthStateChanged error:', error)
+        router.replace('/login')
       }
     )
-    return () => unsubscribe()
+
+    // Fallback: if Firebase never resolves in 6s, redirect to login
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        console.warn('Firebase auth timed out — redirecting to /login')
+        router.replace('/login')
+      }
+    }, 6000)
+
+    return () => {
+      unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [router])
 
   return (
